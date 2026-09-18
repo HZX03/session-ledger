@@ -1,0 +1,1989 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Session Ledger</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg: #10190F;
+    --felt: #1D2B1B;
+    --felt-light: #263723;
+    --line: #33452F;
+    --cream: #EFE8D8;
+    --muted: #8B9686;
+    --gold: #C9A24B;
+    --gold-dim: #8C7A45;
+    --red: #B3483B;
+    --red-dim: #7E3B34;
+    --radius: 10px;
+  }
+
+  * { box-sizing: border-box; }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
+  }
+
+  html, body {
+    background: var(--bg);
+    color: var(--cream);
+    font-family: 'IBM Plex Sans', sans-serif;
+    margin: 0;
+    padding: 0;
+    min-height: 100%;
+  }
+
+  body {
+    padding: 28px 20px 60px;
+  }
+
+  .wrap {
+    max-width: 880px;
+    margin: 0 auto;
+  }
+
+  /* ---------- Header ---------- */
+  .suits {
+    letter-spacing: 6px;
+    color: var(--gold-dim);
+    font-size: 13px;
+    margin-bottom: 6px;
+  }
+
+  h1 {
+    font-family: 'Fraunces', serif;
+    font-weight: 600;
+    font-size: 32px;
+    margin: 0 0 4px;
+    letter-spacing: 0.3px;
+  }
+
+  .subtitle {
+    color: var(--muted);
+    font-size: 14px;
+    margin: 0 0 24px;
+  }
+
+  .header-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-bottom: 24px;
+  }
+
+  .header-row .subtitle {
+    margin-bottom: 0;
+  }
+
+  .currency-picker {
+    display: flex;
+    gap: 10px;
+    margin-top: 4px;
+  }
+
+  .currency-picker label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--muted);
+    margin-bottom: 5px;
+  }
+
+  .currency-picker input {
+    width: 100px;
+    background: var(--felt);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    color: var(--cream);
+    padding: 8px 10px;
+    font-size: 13px;
+  }
+
+  .currency-picker input:focus {
+    outline: 2px solid var(--gold);
+    outline-offset: 1px;
+  }
+
+  .headline {
+    background: linear-gradient(180deg, var(--felt), var(--bg));
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 24px 26px 20px;
+    margin-bottom: 28px;
+  }
+
+  .headline-top {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .net-label {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--muted);
+    margin: 0 0 2px;
+  }
+
+  .net-value-container {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .net-value-line {
+    font-family: 'Fraunces', serif;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.1;
+    color: var(--cream);
+  }
+
+  .net-value-container.single .net-value-line {
+    font-size: 48px;
+  }
+
+  .net-value-container:not(.single) .net-value-line {
+    font-size: 26px;
+  }
+
+  .net-value-line.pos { color: var(--gold); }
+  .net-value-line.neg { color: var(--red); }
+
+  .stats {
+    display: flex;
+    gap: 24px;
+    text-align: right;
+    flex-wrap: wrap;
+  }
+
+  .bw-stats {
+    display: flex;
+    gap: 24px;
+    flex-wrap: wrap;
+  }
+
+  .stat {
+    min-width: 80px;
+  }
+
+  .stat .num {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 18px;
+    font-weight: 500;
+    color: var(--cream);
+  }
+
+  .stat .num.pos { color: var(--gold); }
+  .stat .num.neg { color: var(--red); }
+
+  .stat .lbl {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--muted);
+  }
+
+  /* Chip trail */
+  .trail {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    margin-top: 18px;
+    padding-top: 16px;
+    border-top: 1px solid var(--line);
+    flex-wrap: wrap;
+    min-height: 14px;
+  }
+
+  .chip-dot {
+    border-radius: 50%;
+    flex-shrink: 0;
+    cursor: default;
+  }
+
+  .trail-empty {
+    font-size: 12px;
+    color: var(--muted);
+    font-style: italic;
+  }
+
+  /* ---------- Form ---------- */
+  form {
+    background: var(--felt);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 20px;
+    margin-bottom: 28px;
+  }
+
+  .form-title {
+    font-family: 'Fraunces', serif;
+    font-size: 18px;
+    margin: 0 0 14px;
+    color: var(--cream);
+  }
+
+  .grid {
+    display: grid;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+
+  .grid-meta {
+    grid-template-columns: 130px 110px 110px 130px;
+  }
+
+  .grid-money {
+    grid-template-columns: 1.3fr 0.85fr 0.75fr 0.75fr 0.85fr 0.85fr;
+  }
+
+  @media (max-width: 900px) {
+    .grid-meta { grid-template-columns: 1fr 1fr; }
+    .grid-money { grid-template-columns: 1fr 1fr 1fr; }
+  }
+
+  @media (max-width: 640px) {
+    .grid-meta { grid-template-columns: 1fr 1fr; }
+    .grid-money { grid-template-columns: 1fr 1fr; }
+  }
+
+  label {
+    display: block;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--muted);
+    margin-bottom: 5px;
+  }
+
+  input, textarea, select {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    color: var(--cream);
+    padding: 9px 10px;
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 14px;
+  }
+
+  input[type="number"], .mono-input {
+    font-family: 'IBM Plex Mono', monospace;
+  }
+
+  textarea {
+    resize: vertical;
+    min-height: 44px;
+    font-family: 'IBM Plex Sans', sans-serif;
+  }
+
+  input:focus, textarea:focus, button:focus {
+    outline: 2px solid var(--gold);
+    outline-offset: 1px;
+  }
+
+  .form-row-bottom {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .hand-toggle-row {
+    margin-bottom: 4px;
+  }
+
+  .hand-toggle-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--muted);
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .hand-toggle-label input[type="checkbox"] {
+    width: 15px;
+    height: 15px;
+    accent-color: var(--gold);
+    cursor: pointer;
+  }
+
+  .hand-toggle-label:hover span {
+    color: var(--cream);
+  }
+
+  .hand-fields {
+    border: 1px dashed var(--line);
+    border-radius: 8px;
+    padding: 14px;
+    margin: 10px 0 16px;
+    background: rgba(0,0,0,0.12);
+  }
+
+  .hand-block {
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 12px;
+    background: rgba(0,0,0,0.15);
+  }
+
+  .hand-block + .hand-block {
+    margin-top: 12px;
+  }
+
+  .hand-block-head {
+    margin-bottom: 10px;
+  }
+
+  .hand-block-title {
+    font-family: 'Fraunces', serif;
+    font-size: 14px;
+    color: var(--gold);
+  }
+
+  .hand-row {
+    display: grid;
+    grid-template-columns: 90px 1fr;
+    gap: 10px;
+    align-items: start;
+    margin-bottom: 8px;
+  }
+
+  .hand-row:last-child { margin-bottom: 0; }
+
+  @media (max-width: 640px) {
+    .hand-row { grid-template-columns: 1fr; }
+  }
+
+  .hand-row-label {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--muted);
+    padding-top: 9px;
+  }
+
+  .hand-row textarea {
+    min-height: 40px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+  }
+
+  .add-hand-row {
+    margin-top: 12px;
+    display: flex;
+    gap: 10px;
+  }
+
+  .btn-add-hand {
+    background: transparent;
+    border: 1px dashed var(--gold-dim);
+    color: var(--gold);
+    border-radius: 6px;
+    padding: 7px 14px;
+    font-size: 13px;
+    font-family: 'IBM Plex Sans', sans-serif;
+    cursor: pointer;
+  }
+
+  .btn-remove-hand {
+    border-color: var(--red-dim);
+    color: var(--red);
+  }
+
+  .btn-remove-hand:hover {
+    border-style: solid;
+    background: rgba(179,72,59,0.08);
+  }
+
+  .btn-remove-hand:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .btn-add-hand:hover {
+    border-style: solid;
+    background: rgba(201,162,75,0.08);
+  }
+
+  .form-error {
+    color: var(--red);
+    font-size: 13px;
+    margin-right: auto;
+  }
+
+  button.submit {
+    background: var(--gold);
+    color: #1A1408;
+    border: none;
+    border-radius: 6px;
+    padding: 10px 20px;
+    font-weight: 600;
+    font-size: 14px;
+    cursor: pointer;
+    font-family: 'IBM Plex Sans', sans-serif;
+  }
+
+  button.submit:hover { background: #d9b45c; }
+
+  /* ---------- Ledger table ---------- */
+  .ledger-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 10px;
+  }
+
+  .ledger-head h2 {
+    font-family: 'Fraunces', serif;
+    font-size: 18px;
+    margin: 0;
+    font-weight: 600;
+  }
+
+  .ledger-count {
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  .row {
+    display: grid;
+    grid-template-columns: 90px 1.3fr 90px 90px 100px 30px 28px;
+    gap: 12px;
+    align-items: start;
+    padding: 13px 4px;
+    border-bottom: 1px solid var(--line);
+    font-size: 14px;
+  }
+
+  .row.head-row {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--muted);
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--gold-dim);
+  }
+
+  @media (max-width: 640px) {
+    .row { grid-template-columns: 70px 1fr 70px 24px 24px; }
+    .row .col-stake, .row .col-buyin { display: none; }
+    .row.head-row .col-stake, .row.head-row .col-buyin { display: none; }
+  }
+
+  .col-date {
+    font-family: 'IBM Plex Mono', monospace;
+    color: var(--muted);
+    font-size: 13px;
+  }
+
+  .col-date-time {
+    font-family: 'IBM Plex Mono', monospace;
+    color: var(--muted);
+    font-size: 11px;
+    opacity: 0.8;
+    margin-top: 2px;
+  }
+
+  .col-desc .desc-text {
+    color: var(--cream);
+  }
+
+  .col-desc .comment-text {
+    color: var(--muted);
+    font-size: 12.5px;
+    margin-top: 3px;
+    line-height: 1.4;
+  }
+
+  .session-meta-line {
+    color: var(--gold-dim);
+    font-size: 11px;
+    font-family: 'IBM Plex Mono', monospace;
+    margin-top: 5px;
+    letter-spacing: 0.2px;
+  }
+
+  .hand-note {
+    margin-top: 8px;
+    border-left: 2px solid var(--gold-dim);
+    padding-left: 10px;
+  }
+
+  .hand-note-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 4px;
+  }
+
+  .hand-note-label {
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--gold-dim);
+  }
+
+  .hand-note-del {
+    background: none;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 13px;
+    line-height: 1;
+    padding: 0 2px;
+  }
+
+  .hand-note-del:hover { color: var(--red); }
+
+  .hand-note-street {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.5;
+    margin-bottom: 2px;
+  }
+
+  .hand-note-street b {
+    color: var(--cream);
+    font-weight: 500;
+  }
+
+  .col-stake {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    color: var(--muted);
+  }
+
+  .col-buyin {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    color: var(--muted);
+    text-align: right;
+  }
+
+  .col-result {
+    font-family: 'IBM Plex Mono', monospace;
+    font-weight: 600;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .col-result.pos { color: var(--gold); }
+  .col-result.neg { color: var(--red); }
+
+  .del-btn {
+    background: none;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 16px;
+    line-height: 1;
+    padding: 2px 4px;
+  }
+
+  .edit-btn {
+    background: none;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+    padding: 2px 4px;
+  }
+
+  .edit-btn:hover { color: var(--gold); }
+
+  /* ---------- Backup toolbar ---------- */
+  .backup-bar {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .btn-ghost {
+    background: transparent;
+    border: 1px solid var(--line);
+    color: var(--muted);
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-size: 12px;
+    font-family: 'IBM Plex Sans', sans-serif;
+    cursor: pointer;
+  }
+
+  .btn-ghost:hover {
+    border-color: var(--gold-dim);
+    color: var(--cream);
+  }
+
+  input[type="file"] { display: none; }
+
+  .backup-msg {
+    font-size: 12px;
+    color: var(--muted);
+    margin: 8px 0 0;
+    min-height: 16px;
+  }
+
+  .backup-msg.ok { color: var(--gold); }
+  .backup-msg.err { color: var(--red); }
+
+  /* ---------- Drive panel ---------- */
+  .drive-panel {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    margin: 4px 0 20px;
+    overflow: hidden;
+  }
+
+  .drive-panel-toggle {
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: var(--felt);
+    border: none;
+    color: var(--cream);
+    padding: 10px 14px;
+    font-size: 13px;
+    font-family: 'IBM Plex Sans', sans-serif;
+    cursor: pointer;
+    text-align: left;
+  }
+
+  .drive-panel-toggle:hover { background: var(--felt-light); }
+
+  .drive-panel-chevron {
+    color: var(--muted);
+    transition: transform 0.15s ease;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .drive-panel-chevron { transition: none; }
+  }
+
+  .drive-panel-chevron.open { transform: rotate(90deg); }
+
+  .drive-panel-body {
+    padding: 16px;
+    background: rgba(0,0,0,0.1);
+  }
+
+  .drive-setup {
+    margin-bottom: 16px;
+    font-size: 13px;
+    color: var(--muted);
+  }
+
+  .drive-setup summary {
+    cursor: pointer;
+    color: var(--gold);
+    margin-bottom: 8px;
+  }
+
+  .drive-setup-steps {
+    padding-left: 20px;
+    line-height: 1.7;
+  }
+
+  .drive-setup-steps li { margin-bottom: 6px; }
+
+  .drive-setup-steps a { color: var(--gold); }
+
+  .drive-setup-steps code {
+    background: rgba(0,0,0,0.3);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+  }
+
+  .drive-row {
+    display: flex;
+    gap: 10px;
+    align-items: flex-end;
+    flex-wrap: wrap;
+  }
+
+  .drive-row input[type="text"] {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+  }
+
+  #driveSignInBtn:disabled, #drivePushBtn:disabled, #drivePullBtn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .drive-last-sync {
+    font-size: 11.5px;
+    color: var(--muted);
+    margin: 10px 0 0;
+    font-family: 'IBM Plex Mono', monospace;
+  }
+
+  .drive-autosync-status {
+    font-size: 12px;
+    color: var(--muted);
+    margin: 12px 0 0;
+    line-height: 1.5;
+  }
+
+  .del-btn:hover { color: var(--red); }
+
+  .empty-state {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--muted);
+    font-size: 14px;
+  }
+
+  .status-msg {
+    text-align: center;
+    padding: 20px;
+    color: var(--muted);
+    font-size: 13px;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="suits">&spades; &hearts; &diams; &clubs;</div>
+  <div class="header-row">
+    <div>
+      <h1>Session Ledger</h1>
+      <p class="subtitle">Every hand you sat down to play, tallied.</p>
+    </div>
+    <div class="currency-picker">
+      <div>
+        <label for="defaultCurrencyCode">Default currency</label>
+        <input type="text" id="defaultCurrencyCode" class="mono-input" placeholder="e.g. SGD" maxlength="8">
+      </div>
+      <div>
+        <label for="defaultCurrencySymbolInput">Default symbol</label>
+        <input type="text" id="defaultCurrencySymbolInput" class="mono-input" placeholder="e.g. S$" maxlength="8">
+      </div>
+    </div>
+  </div>
+
+  <div class="headline">
+    <div class="headline-top">
+      <div>
+        <p class="net-label">Net result</p>
+        <div class="net-value-container single" id="netValue">
+          <span class="net-value-line">$0</span>
+        </div>
+      </div>
+      <div class="stats">
+        <div class="stat">
+          <div class="num" id="statCount">0</div>
+          <div class="lbl">Sessions</div>
+        </div>
+        <div class="stat">
+          <div class="num" id="statWinRate">—</div>
+          <div class="lbl">Win rate</div>
+        </div>
+        <div class="bw-stats" id="bestWorstStats">
+          <div class="stat">
+            <div class="num">—</div>
+            <div class="lbl">Best session</div>
+          </div>
+          <div class="stat">
+            <div class="num">—</div>
+            <div class="lbl">Worst session</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="trail" id="trail">
+      <span class="trail-empty">Log a session to start the trail.</span>
+    </div>
+  </div>
+
+  <form id="sessionForm">
+    <p class="form-title" id="formTitle">Log a session</p>
+    <div class="grid grid-meta">
+      <div>
+        <label for="date">Date</label>
+        <input type="date" id="date" required>
+      </div>
+      <div>
+        <label for="startTime">Start time</label>
+        <input type="time" id="startTime" class="mono-input">
+      </div>
+      <div>
+        <label for="endTime">End time</label>
+        <input type="time" id="endTime" class="mono-input">
+      </div>
+      <div>
+        <label for="handsPlayed">Hands played</label>
+        <input type="number" id="handsPlayed" class="mono-input" step="1" min="0" placeholder="e.g. 140">
+      </div>
+    </div>
+    <div class="grid grid-money">
+      <div>
+        <label for="description">Description</label>
+        <input type="text" id="description" placeholder="e.g. Friday home game" required>
+      </div>
+      <div>
+        <label for="stake">Stake</label>
+        <input type="text" id="stake" class="mono-input" placeholder="e.g. $1/$3">
+      </div>
+      <div>
+        <label for="sessionCurrencyCode">Currency</label>
+        <input type="text" id="sessionCurrencyCode" class="mono-input" placeholder="e.g. SGD">
+      </div>
+      <div>
+        <label for="sessionCurrencySymbol">Symbol</label>
+        <input type="text" id="sessionCurrencySymbol" class="mono-input" placeholder="e.g. S$">
+      </div>
+      <div>
+        <label for="buyIn">Buy-in</label>
+        <input type="number" id="buyIn" class="mono-input" step="0.01" min="0" placeholder="e.g. 200">
+      </div>
+      <div>
+        <label for="result">Result</label>
+        <input type="number" id="result" step="0.01" placeholder="+180 or -95" required>
+      </div>
+    </div>
+    <div style="margin-bottom:12px;">
+      <label for="comments">Comments</label>
+      <textarea id="comments" placeholder="How it played out, notes for next time..."></textarea>
+    </div>
+
+    <div class="hand-toggle-row">
+      <label class="hand-toggle-label">
+        <input type="checkbox" id="handToggle">
+        <span>Log interesting hand(s)</span>
+      </label>
+    </div>
+
+    <div class="hand-fields" id="handFields" hidden>
+      <div id="handsContainer"></div>
+      <div class="add-hand-row">
+        <button type="button" class="btn-add-hand" id="addHandBtn">+ Add another hand</button>
+        <button type="button" class="btn-add-hand btn-remove-hand" id="removeHandBtn">− Delete hand</button>
+      </div>
+    </div>
+
+    <div class="form-row-bottom">
+      <span class="form-error" id="formError"></span>
+      <button type="button" class="btn-ghost" id="cancelEditBtn" hidden>Cancel edit</button>
+      <button type="submit" class="submit" id="submitBtn">Log session</button>
+    </div>
+  </form>
+
+  <div class="ledger-head">
+    <h2>All sessions</h2>
+    <div class="backup-bar">
+      <button type="button" class="btn-ghost" id="exportCsvBtn">Export CSV</button>
+      <button type="button" class="btn-ghost" id="exportJsonBtn">Export JSON</button>
+      <button type="button" class="btn-ghost" id="importBtn">Import file</button>
+      <input type="file" id="importInput" accept=".json,.csv">
+    </div>
+  </div>
+  <p class="backup-msg" id="backupMsg"></p>
+
+  <div class="drive-panel">
+    <button type="button" class="drive-panel-toggle" id="drivePanelToggle">
+      <span>&#9733; Google Drive sync</span>
+      <span class="drive-panel-chevron" id="drivePanelChevron">&#9656;</span>
+    </button>
+
+    <div class="drive-panel-body" id="drivePanelBody" hidden>
+      <details class="drive-setup">
+        <summary>Deploying your own copy? Set this up once</summary>
+        <ol class="drive-setup-steps">
+          <li>Go to <a href="https://console.cloud.google.com/" target="_blank" rel="noopener">Google Cloud Console</a> and create a project (or use an existing one).</li>
+          <li>Under <b>APIs &amp; Services &rarr; Library</b>, enable the <b>Google Drive API</b>.</li>
+          <li>Under <b>APIs &amp; Services &rarr; Credentials</b>, click <b>Create Credentials &rarr; OAuth client ID</b>, type <b>Web application</b>.</li>
+          <li>Under <b>Authorized JavaScript origins</b>, add the exact URL this page is served from (e.g. your GitHub Pages URL, <code>https://username.github.io</code>) — Google OAuth won't work on a plain <code>file://</code> path.</li>
+          <li>Copy the <b>Client ID</b> it gives you and paste it into the <code>GOOGLE_CLIENT_ID</code> constant near the top of the <code>&lt;script&gt;</code> in this file, then redeploy. It's baked into the page, the same way it's done for you here — no per-device setup needed.</li>
+        </ol>
+      </details>
+
+      <div class="drive-row" style="margin-top:12px;">
+        <button type="button" class="btn-ghost" id="driveSignInBtn" disabled>Sign in with Google</button>
+        <button type="button" class="btn-ghost" id="drivePushBtn" disabled>Push to Drive</button>
+        <button type="button" class="btn-ghost" id="drivePullBtn" disabled>Pull from Drive</button>
+      </div>
+
+      <p class="drive-autosync-status" id="driveAutoSyncStatus">This device signs in automatically and stays synced on every visit — no toggle needed.</p>
+
+      <p class="drive-last-sync" id="driveLastSync"></p>
+      <p class="backup-msg" id="driveMsg"></p>
+    </div>
+  </div>
+
+  <div class="ledger-head" style="margin-top:-6px;">
+    <span></span>
+    <span class="ledger-count" id="ledgerCount"></span>
+  </div>
+
+  <div class="row head-row">
+    <div>Date</div>
+    <div>Description</div>
+    <div class="col-stake">Stake</div>
+    <div class="col-buyin" style="text-align:right;">Buy-in</div>
+    <div style="text-align:right;">Result</div>
+    <div></div>
+    <div></div>
+  </div>
+
+  <div id="ledgerBody">
+    <div class="status-msg">Loading sessions…</div>
+  </div>
+
+</div>
+
+<script>
+  const STORAGE_KEY = 'poker-sessions';
+  let sessions = [];
+  let loaded = false;
+  let defaultCurrency = '$';
+
+  const fmtMoney = (n, symbol = defaultCurrency) => {
+    const sign = n < 0 ? '-' : '';
+    return sign + symbol + Math.abs(n).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+  };
+
+  const fmtDate = (iso) => {
+    const [y, m, d] = iso.split('-');
+    return `${d}/${m}/${y.slice(2)}`;
+  };
+
+  const fmtTime = (t) => {
+    if (!t) return '';
+    const [h, m] = t.split(':').map(Number);
+    const period = h >= 12 ? 'PM' : 'AM';
+    const h12 = h % 12 === 0 ? 12 : h % 12;
+    return `${h12}:${String(m).padStart(2, '0')}${period}`;
+  };
+
+  // ---------- Storage abstraction ----------
+  // Uses Claude's window.storage when running inside a Claude artifact.
+  // Falls back to localStorage automatically when running as a standalone
+  // downloaded file (e.g. opened directly in a browser or served locally).
+  const hasClaudeStorage = typeof window.storage !== 'undefined' && window.storage && typeof window.storage.get === 'function';
+
+  const store = {
+    async get(key) {
+      if (hasClaudeStorage) {
+        try {
+          const res = await window.storage.get(key, false);
+          return res ? res.value : null;
+        } catch (err) {
+          return null;
+        }
+      }
+      try {
+        return window.localStorage.getItem(key);
+      } catch (err) {
+        return null;
+      }
+    },
+    async set(key, value) {
+      if (hasClaudeStorage) {
+        try {
+          const result = await window.storage.set(key, value, false);
+          return !!result;
+        } catch (err) {
+          console.error('Storage error:', err);
+          return false;
+        }
+      }
+      try {
+        window.localStorage.setItem(key, value);
+        return true;
+      } catch (err) {
+        console.error('localStorage error:', err);
+        return false;
+      }
+    }
+  };
+
+  async function loadSessions() {
+    try {
+      const value = await store.get(STORAGE_KEY);
+      sessions = value ? JSON.parse(value) : [];
+    } catch (err) {
+      sessions = [];
+    }
+    loaded = true;
+    render();
+  }
+
+  async function saveSessions(opts = {}) {
+    const ok = await store.set(STORAGE_KEY, JSON.stringify(sessions));
+    if (!ok) console.error('Save failed');
+    if (!opts.skipAutoPush) autoPushIfEnabled();
+  }
+
+  const CURRENCY_KEY = 'poker-currency-symbol';
+  const CURRENCY_CODE_KEY = 'poker-currency-code';
+  let defaultCurrencyCode = '';
+  const defaultCurrencyCodeInput = document.getElementById('defaultCurrencyCode');
+  const defaultCurrencySymbolInput = document.getElementById('defaultCurrencySymbolInput');
+  const sessionCurrencyCodeInput = document.getElementById('sessionCurrencyCode');
+  const sessionCurrencySymbolInput = document.getElementById('sessionCurrencySymbol');
+
+  async function loadDefaultCurrency() {
+    const storedSymbol = await store.get(CURRENCY_KEY);
+    if (storedSymbol) defaultCurrency = storedSymbol;
+    const storedCode = await store.get(CURRENCY_CODE_KEY);
+    if (storedCode) defaultCurrencyCode = storedCode;
+
+    defaultCurrencySymbolInput.value = defaultCurrency;
+    defaultCurrencyCodeInput.value = defaultCurrencyCode;
+    sessionCurrencySymbolInput.value = defaultCurrency;
+    sessionCurrencyCodeInput.value = defaultCurrencyCode;
+  }
+
+  defaultCurrencySymbolInput.addEventListener('change', async (e) => {
+    defaultCurrency = e.target.value.trim();
+    await store.set(CURRENCY_KEY, defaultCurrency);
+    // Only affects what's pre-filled for the next new session —
+    // sessions already logged keep whichever currency they were saved with.
+    if (editingSessionId === null) sessionCurrencySymbolInput.value = defaultCurrency;
+  });
+
+  defaultCurrencyCodeInput.addEventListener('change', async (e) => {
+    defaultCurrencyCode = e.target.value.trim();
+    await store.set(CURRENCY_CODE_KEY, defaultCurrencyCode);
+    if (editingSessionId === null) sessionCurrencyCodeInput.value = defaultCurrencyCode;
+  });
+
+  function groupSessionsByCurrency(list) {
+    const groups = {};
+    list.forEach(s => {
+      const cur = s.currency || defaultCurrency;
+      if (!groups[cur]) groups[cur] = { net: 0, best: -Infinity, worst: Infinity, count: 0 };
+      groups[cur].net += s.result;
+      groups[cur].best = Math.max(groups[cur].best, s.result);
+      groups[cur].worst = Math.min(groups[cur].worst, s.result);
+      groups[cur].count++;
+    });
+    return groups;
+  }
+
+  function render() {
+    const body = document.getElementById('ledgerBody');
+    const count = sessions.length;
+    document.getElementById('ledgerCount').textContent = count === 1 ? '1 entry' : `${count} entries`;
+
+    // Headline stats — grouped per currency, since summing across currencies
+    // as raw numbers would be meaningless.
+    const groups = groupSessionsByCurrency(sessions);
+    const currencyKeys = Object.keys(groups);
+    const multiCurrency = currencyKeys.length > 1;
+
+    const netContainer = document.getElementById('netValue');
+    netContainer.className = 'net-value-container' + (multiCurrency ? '' : ' single');
+    if (!currencyKeys.length) {
+      netContainer.innerHTML = `<span class="net-value-line">${fmtMoney(0, defaultCurrency)}</span>`;
+    } else {
+      netContainer.innerHTML = currencyKeys.map(cur => {
+        const net = groups[cur].net;
+        return `<span class="net-value-line ${net >= 0 ? 'pos' : 'neg'}">${fmtMoney(net, cur)}</span>`;
+      }).join('');
+    }
+
+    document.getElementById('statCount').textContent = count;
+
+    const winRateEl = document.getElementById('statWinRate');
+    if (count === 0) {
+      winRateEl.textContent = '—';
+    } else {
+      const wins = sessions.filter(s => s.result > 0).length;
+      winRateEl.textContent = Math.round((wins / count) * 100) + '%';
+    }
+
+    const bwContainer = document.getElementById('bestWorstStats');
+    if (!currencyKeys.length) {
+      bwContainer.innerHTML = `
+        <div class="stat"><div class="num">—</div><div class="lbl">Best session</div></div>
+        <div class="stat"><div class="num">—</div><div class="lbl">Worst session</div></div>`;
+    } else {
+      bwContainer.innerHTML = currencyKeys.map(cur => {
+        const g = groups[cur];
+        const suffix = multiCurrency ? ` (${cur})` : '';
+        return `
+          <div class="stat"><div class="num ${g.best >= 0 ? 'pos' : 'neg'}">${fmtMoney(g.best, cur)}</div><div class="lbl">Best session${suffix}</div></div>
+          <div class="stat"><div class="num ${g.worst >= 0 ? 'pos' : 'neg'}">${fmtMoney(g.worst, cur)}</div><div class="lbl">Worst session${suffix}</div></div>`;
+      }).join('');
+    }
+
+    // Chip trail (chronological order, oldest to newest)
+    const trail = document.getElementById('trail');
+    if (count === 0) {
+      trail.innerHTML = '<span class="trail-empty">Log a session to start the trail.</span>';
+    } else {
+      const chrono = [...sessions].sort((a, b) => a.date.localeCompare(b.date) || a.id - b.id);
+      const maxAbs = Math.max(...chrono.map(s => Math.abs(s.result)), 1);
+      trail.innerHTML = chrono.map(s => {
+        const size = 8 + (Math.abs(s.result) / maxAbs) * 12;
+        const color = s.result >= 0 ? 'var(--gold)' : 'var(--red)';
+        return `<span class="chip-dot" title="${fmtDate(s.date)}: ${fmtMoney(s.result, s.currency || defaultCurrency)}" style="width:${size}px;height:${size}px;background:${color};"></span>`;
+      }).join('');
+    }
+
+    // Ledger rows
+    if (count === 0) {
+      body.innerHTML = '<div class="empty-state">No sessions logged yet. Add your first one above.</div>';
+      return;
+    }
+
+    const sorted = [...sessions].sort((a, b) => b.date.localeCompare(a.date) || b.id - a.id);
+    body.innerHTML = sorted.map(s => `
+      <div class="row" data-id="${s.id}">
+        <div class="col-date">${fmtDate(s.date)}${renderTimeRange(s)}</div>
+        <div class="col-desc">
+          <div class="desc-text">${escapeHtml(s.description)}</div>
+          ${s.comments ? `<div class="comment-text">${escapeHtml(s.comments)}</div>` : ''}
+          ${renderSessionMetaLine(s)}
+          ${renderHandNotes(s.id, getHandsArray(s))}
+        </div>
+        <div class="col-stake">${escapeHtml(s.stake || '—')}</div>
+        <div class="col-buyin">${(s.buyIn === null || s.buyIn === undefined || s.buyIn === '') ? '—' : fmtMoney(s.buyIn, s.currency || defaultCurrency)}</div>
+        <div class="col-result ${s.result >= 0 ? 'pos' : 'neg'}">${fmtMoney(s.result, s.currency || defaultCurrency)}</div>
+        <button class="edit-btn" data-id="${s.id}" aria-label="Edit session" title="Edit session">&#9998;</button>
+        <button class="del-btn" data-id="${s.id}" aria-label="Delete session" title="Delete session">&times;</button>
+      </div>
+    `).join('');
+
+    body.querySelectorAll('.del-btn').forEach(btn => {
+      btn.addEventListener('click', () => deleteSession(Number(btn.dataset.id)));
+    });
+
+    body.querySelectorAll('.edit-btn').forEach(btn => {
+      btn.addEventListener('click', () => startEditSession(Number(btn.dataset.id)));
+    });
+
+    body.querySelectorAll('.hand-note-del').forEach(btn => {
+      btn.addEventListener('click', () => deleteHandFromSession(Number(btn.dataset.sessionId), Number(btn.dataset.handIndex)));
+    });
+  }
+
+  function renderTimeRange(s) {
+    if (!s.startTime && !s.endTime) return '';
+    let text;
+    if (s.startTime && s.endTime) text = `${fmtTime(s.startTime)}–${fmtTime(s.endTime)}`;
+    else if (s.startTime) text = `from ${fmtTime(s.startTime)}`;
+    else text = `until ${fmtTime(s.endTime)}`;
+    return `<div class="col-date-time">${text}</div>`;
+  }
+
+  function getHandsArray(s) {
+    if (Array.isArray(s.hands) && s.hands.length) return s.hands;
+    if (s.hand) return [s.hand];
+    return [];
+  }
+
+  function renderHandNotes(sessionId, hands) {
+    const valid = hands.filter(h => h && (h.preflop || h.flop || h.turn || h.river));
+    if (!valid.length) return '';
+    return valid.map((hand, i) => {
+      const streets = [
+        ['Preflop', hand.preflop],
+        ['Flop', hand.flop],
+        ['Turn', hand.turn],
+        ['River', hand.river]
+      ].filter(([, text]) => text);
+      const label = valid.length > 1 ? `Hand of note ${i + 1}` : 'Hand of note';
+      return `<div class="hand-note">
+        <div class="hand-note-head">
+          <span class="hand-note-label">${label}</span>
+          <button type="button" class="hand-note-del" data-session-id="${sessionId}" data-hand-index="${i}" aria-label="Delete this hand" title="Delete this hand">&times;</button>
+        </div>
+        ${streets.map(([l, text]) => `<div class="hand-note-street"><b>${l}:</b> ${escapeHtml(text)}</div>`).join('')}
+      </div>`;
+    }).join('');
+  }
+
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  // Pulls the big blind size out of a free-text stake string like "$1/$3"
+  // or "2/5 NLH" by taking the last number after a "/". Returns null if the
+  // stake doesn't look like it has a parseable big blind.
+  function parseBigBlind(stakeStr) {
+    if (!stakeStr) return null;
+    const matches = stakeStr.match(/\/\s*\$?\s*(\d+(\.\d+)?)/g);
+    if (!matches || !matches.length) return null;
+    const last = matches[matches.length - 1];
+    const num = last.match(/(\d+(\.\d+)?)/);
+    if (!num) return null;
+    const bb = parseFloat(num[1]);
+    return bb > 0 ? bb : null;
+  }
+
+  // Session duration in hours from start/end time, handling sessions that
+  // cross midnight. Returns null if either time is missing.
+  function computeDurationHours(session) {
+    if (!session.startTime || !session.endTime) return null;
+    const [sh, sm] = session.startTime.split(':').map(Number);
+    const [eh, em] = session.endTime.split(':').map(Number);
+    let startMin = sh * 60 + sm;
+    let endMin = eh * 60 + em;
+    if (endMin <= startMin) endMin += 24 * 60; // crossed midnight
+    const hours = (endMin - startMin) / 60;
+    return hours > 0 ? hours : null;
+  }
+
+  function computeBBRates(session) {
+    const bb = parseBigBlind(session.stake);
+    const resultInBB = bb ? session.result / bb : null;
+    const hours = computeDurationHours(session);
+    const bbPerHour = (resultInBB !== null && hours) ? resultInBB / hours : null;
+    const bbPer100 = (resultInBB !== null && session.handsPlayed) ? resultInBB / (session.handsPlayed / 100) : null;
+    return { bbPerHour, bbPer100 };
+  }
+
+  function fmtBB(n) {
+    if (n === null || n === undefined || !isFinite(n)) return '—';
+    const sign = n >= 0 ? '+' : '';
+    return `${sign}${n.toFixed(1)} BB`;
+  }
+
+  function renderSessionMetaLine(s) {
+    const cur = s.currency || defaultCurrency;
+    const code = s.currencyCode || defaultCurrencyCode;
+    const currencyLabel = code ? `${cur} (${code})` : cur;
+    const { bbPerHour, bbPer100 } = computeBBRates(s);
+    const parts = [
+      `Currency: ${escapeHtml(currencyLabel)}`,
+      `BB/hr: ${fmtBB(bbPerHour)}`,
+      `BB/100: ${fmtBB(bbPer100)}`
+    ];
+    if (s.handsPlayed) parts.splice(2, 0, `${s.handsPlayed} hands`);
+    return `<div class="session-meta-line">${parts.join(' · ')}</div>`;
+  }
+
+  async function deleteSession(id) {
+    sessions = sessions.filter(s => s.id !== id);
+    if (editingSessionId === id) resetFormToCreateMode();
+    render();
+    await saveSessions();
+  }
+
+  async function deleteHandFromSession(sessionId, handIndex) {
+    const session = sessions.find(s => s.id === sessionId);
+    if (!session) return;
+    const valid = getHandsArray(session).filter(h => h && (h.preflop || h.flop || h.turn || h.river));
+    valid.splice(handIndex, 1);
+    session.hands = valid.length ? valid : null;
+    delete session.hand; // migrate off the legacy single-hand field
+    render();
+    await saveSessions();
+  }
+
+  document.getElementById('date').valueAsDate = new Date();
+
+  let handBlockCounter = 0;
+
+  function makeHandBlockMarkup(n) {
+    const uid = 'hb' + (++handBlockCounter);
+    return `
+      <div class="hand-block" data-uid="${uid}">
+        <div class="hand-block-head">
+          <span class="hand-block-title">Hand ${n}</span>
+        </div>
+        <div class="hand-row">
+          <span class="hand-row-label">Preflop</span>
+          <textarea data-field="preflop" placeholder="e.g. UTG raises to $15, BTN calls, BB 3-bets..."></textarea>
+        </div>
+        <div class="hand-row">
+          <span class="hand-row-label">Flop</span>
+          <textarea data-field="flop" placeholder="Board and betting on the flop..."></textarea>
+        </div>
+        <div class="hand-row">
+          <span class="hand-row-label">Turn</span>
+          <textarea data-field="turn" placeholder="Turn card and betting..."></textarea>
+        </div>
+        <div class="hand-row">
+          <span class="hand-row-label">River</span>
+          <textarea data-field="river" placeholder="River card, betting, and showdown..."></textarea>
+        </div>
+      </div>`;
+  }
+
+  function renumberHandBlocks() {
+    const container = document.getElementById('handsContainer');
+    container.querySelectorAll('.hand-block').forEach((block, i) => {
+      block.querySelector('.hand-block-title').textContent = `Hand ${i + 1}`;
+    });
+    updateRemoveHandBtnState();
+  }
+
+  function updateRemoveHandBtnState() {
+    const count = document.getElementById('handsContainer').querySelectorAll('.hand-block').length;
+    document.getElementById('removeHandBtn').disabled = count === 0;
+  }
+
+  function addHandBlock() {
+    const container = document.getElementById('handsContainer');
+    const n = container.querySelectorAll('.hand-block').length + 1;
+    container.insertAdjacentHTML('beforeend', makeHandBlockMarkup(n));
+    updateRemoveHandBtnState();
+  }
+
+  function removeLastHandBlock() {
+    const container = document.getElementById('handsContainer');
+    const blocks = container.querySelectorAll('.hand-block');
+    if (!blocks.length) return;
+    blocks[blocks.length - 1].remove();
+    renumberHandBlocks();
+  }
+
+  function clearHandBlocks() {
+    document.getElementById('handsContainer').innerHTML = '';
+    handBlockCounter = 0;
+    updateRemoveHandBtnState();
+  }
+
+  document.getElementById('addHandBtn').addEventListener('click', addHandBlock);
+  document.getElementById('removeHandBtn').addEventListener('click', removeLastHandBlock);
+
+  document.getElementById('handToggle').addEventListener('change', (e) => {
+    const checked = e.target.checked;
+    document.getElementById('handFields').hidden = !checked;
+    if (checked && document.getElementById('handsContainer').children.length === 0) {
+      addHandBlock();
+    }
+  });
+
+  function collectHandsFromForm() {
+    const blocks = document.querySelectorAll('#handsContainer .hand-block');
+    const hands = [];
+    blocks.forEach(block => {
+      const hand = {
+        preflop: block.querySelector('[data-field="preflop"]').value.trim(),
+        flop: block.querySelector('[data-field="flop"]').value.trim(),
+        turn: block.querySelector('[data-field="turn"]').value.trim(),
+        river: block.querySelector('[data-field="river"]').value.trim()
+      };
+      if (hand.preflop || hand.flop || hand.turn || hand.river) hands.push(hand);
+    });
+    return hands;
+  }
+
+  let editingSessionId = null;
+  const formTitleEl = document.getElementById('formTitle');
+  const submitBtnEl = document.getElementById('submitBtn');
+  const cancelEditBtn = document.getElementById('cancelEditBtn');
+
+  function resetFormToCreateMode() {
+    editingSessionId = null;
+    formTitleEl.textContent = 'Log a session';
+    submitBtnEl.textContent = 'Log session';
+    cancelEditBtn.hidden = true;
+    document.getElementById('sessionForm').reset();
+    document.getElementById('date').valueAsDate = new Date();
+    sessionCurrencySymbolInput.value = defaultCurrency;
+    sessionCurrencyCodeInput.value = defaultCurrencyCode;
+    document.getElementById('handFields').hidden = true;
+    document.getElementById('handToggle').checked = false;
+    clearHandBlocks();
+  }
+
+  function startEditSession(id) {
+    const session = sessions.find(s => s.id === id);
+    if (!session) return;
+
+    editingSessionId = id;
+    formTitleEl.textContent = 'Edit session';
+    submitBtnEl.textContent = 'Update session';
+    cancelEditBtn.hidden = false;
+
+    document.getElementById('date').value = session.date || '';
+    document.getElementById('startTime').value = session.startTime || '';
+    document.getElementById('endTime').value = session.endTime || '';
+    document.getElementById('handsPlayed').value = (session.handsPlayed === null || session.handsPlayed === undefined) ? '' : session.handsPlayed;
+    document.getElementById('description').value = session.description || '';
+    document.getElementById('stake').value = session.stake || '';
+    sessionCurrencySymbolInput.value = session.currency || defaultCurrency;
+    sessionCurrencyCodeInput.value = session.currencyCode || defaultCurrencyCode;
+    document.getElementById('buyIn').value = (session.buyIn === null || session.buyIn === undefined) ? '' : session.buyIn;
+    document.getElementById('result').value = session.result;
+    document.getElementById('comments').value = session.comments || '';
+
+    clearHandBlocks();
+    const existingHands = getHandsArray(session).filter(h => h && (h.preflop || h.flop || h.turn || h.river));
+    if (existingHands.length) {
+      document.getElementById('handToggle').checked = true;
+      document.getElementById('handFields').hidden = false;
+      existingHands.forEach(hand => {
+        addHandBlock();
+        const container = document.getElementById('handsContainer');
+        const block = container.querySelectorAll('.hand-block');
+        const lastBlock = block[block.length - 1];
+        lastBlock.querySelector('[data-field="preflop"]').value = hand.preflop || '';
+        lastBlock.querySelector('[data-field="flop"]').value = hand.flop || '';
+        lastBlock.querySelector('[data-field="turn"]').value = hand.turn || '';
+        lastBlock.querySelector('[data-field="river"]').value = hand.river || '';
+      });
+    } else {
+      document.getElementById('handToggle').checked = false;
+      document.getElementById('handFields').hidden = true;
+    }
+
+    document.getElementById('sessionForm').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  cancelEditBtn.addEventListener('click', resetFormToCreateMode);
+
+  document.getElementById('sessionForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errorEl = document.getElementById('formError');
+    errorEl.textContent = '';
+
+    const date = document.getElementById('date').value;
+    const startTime = document.getElementById('startTime').value;
+    const endTime = document.getElementById('endTime').value;
+    const handsPlayedVal = document.getElementById('handsPlayed').value;
+    const description = document.getElementById('description').value.trim();
+    const stake = document.getElementById('stake').value.trim();
+    const currencyCode = sessionCurrencyCodeInput.value.trim();
+    const currency = sessionCurrencySymbolInput.value.trim();
+    const buyInVal = document.getElementById('buyIn').value;
+    const resultVal = document.getElementById('result').value;
+    const comments = document.getElementById('comments').value.trim();
+
+    const hands = collectHandsFromForm();
+
+    if (!date || !description || resultVal === '') {
+      errorEl.textContent = 'Fill in date, description, and result.';
+      return;
+    }
+
+    const fields = {
+      date,
+      startTime: startTime || null,
+      endTime: endTime || null,
+      handsPlayed: handsPlayedVal === '' ? null : parseInt(handsPlayedVal, 10),
+      description,
+      stake,
+      currency,
+      currencyCode,
+      buyIn: buyInVal === '' ? null : parseFloat(buyInVal),
+      result: parseFloat(resultVal),
+      comments,
+      hands: hands.length ? hands : null
+    };
+
+    if (editingSessionId !== null) {
+      const idx = sessions.findIndex(s => s.id === editingSessionId);
+      if (idx !== -1) {
+        sessions[idx] = { ...sessions[idx], ...fields };
+        delete sessions[idx].hand; // migrate off the legacy single-hand field
+      }
+    } else {
+      sessions.push({ id: Date.now(), ...fields });
+    }
+
+    render();
+    resetFormToCreateMode();
+    await saveSessions();
+  });
+
+  // ---------- Backup: export / import ----------
+  const backupMsg = document.getElementById('backupMsg');
+
+  function showBackupMsg(text, kind) {
+    backupMsg.textContent = text;
+    backupMsg.className = 'backup-msg' + (kind ? ' ' + kind : '');
+  }
+
+  function downloadFile(filename, contents, mime) {
+    const blob = new Blob([contents], {type: mime});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  function todayStamp() {
+    const d = new Date();
+    return d.toISOString().slice(0, 10);
+  }
+
+  document.getElementById('exportJsonBtn').addEventListener('click', () => {
+    downloadFile(`poker-sessions-${todayStamp()}.json`, JSON.stringify(sessions, null, 2), 'application/json');
+    showBackupMsg('Downloaded JSON backup. Move it into a synced Google Drive folder to keep it there.', 'ok');
+  });
+
+  function csvEscape(val) {
+    const s = String(val ?? '');
+    if (/[",\n]/.test(s)) {
+      return '"' + s.replace(/"/g, '""') + '"';
+    }
+    return s;
+  }
+
+  document.getElementById('exportCsvBtn').addEventListener('click', () => {
+    const header = ['id', 'date', 'startTime', 'endTime', 'handsPlayed', 'description', 'stake', 'currencyCode', 'currency', 'buyIn', 'result', 'comments', 'hands'];
+    const lines = [header.join(',')];
+    sessions.forEach(s => {
+      const handsArr = getHandsArray(s).filter(h => h && (h.preflop || h.flop || h.turn || h.river));
+      const flat = {
+        id: s.id, date: s.date, startTime: s.startTime || '', endTime: s.endTime || '',
+        handsPlayed: s.handsPlayed ?? '',
+        description: s.description, stake: s.stake,
+        currencyCode: s.currencyCode || defaultCurrencyCode, currency: s.currency || defaultCurrency,
+        buyIn: s.buyIn, result: s.result, comments: s.comments,
+        hands: handsArr.length ? JSON.stringify(handsArr) : ''
+      };
+      lines.push(header.map(h => csvEscape(flat[h])).join(','));
+    });
+    downloadFile(`poker-sessions-${todayStamp()}.csv`, lines.join('\n'), 'text/csv');
+    showBackupMsg('Downloaded CSV — opens directly in Google Sheets for editing.', 'ok');
+  });
+
+  document.getElementById('importBtn').addEventListener('click', () => {
+    document.getElementById('importInput').click();
+  });
+
+  function parseCsv(text) {
+    const rows = [];
+    let row = [], field = '', inQuotes = false;
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i];
+      if (inQuotes) {
+        if (c === '"') {
+          if (text[i + 1] === '"') { field += '"'; i++; }
+          else { inQuotes = false; }
+        } else {
+          field += c;
+        }
+      } else {
+        if (c === '"') inQuotes = true;
+        else if (c === ',') { row.push(field); field = ''; }
+        else if (c === '\n') { row.push(field); rows.push(row); row = []; field = ''; }
+        else if (c === '\r') { /* skip */ }
+        else field += c;
+      }
+    }
+    if (field.length || row.length) { row.push(field); rows.push(row); }
+    return rows.filter(r => r.length && r.some(v => v !== ''));
+  }
+
+  function importFromJson(text) {
+    const parsed = JSON.parse(text);
+    if (!Array.isArray(parsed)) throw new Error('JSON file must contain an array of sessions.');
+    return parsed.map(s => {
+      let hands = null;
+      if (Array.isArray(s.hands) && s.hands.length) {
+        hands = s.hands.filter(h => h && (h.preflop || h.flop || h.turn || h.river));
+      } else if (s.hand && (s.hand.preflop || s.hand.flop || s.hand.turn || s.hand.river)) {
+        hands = [{ preflop: s.hand.preflop || '', flop: s.hand.flop || '', turn: s.hand.turn || '', river: s.hand.river || '' }];
+      } else if (s.handPreflop || s.handFlop || s.handTurn || s.handRiver) {
+        hands = [{ preflop: s.handPreflop || '', flop: s.handFlop || '', turn: s.handTurn || '', river: s.handRiver || '' }];
+      }
+      return {
+        id: s.id ?? Date.now() + Math.random(),
+        date: s.date ?? todayStamp(),
+        startTime: s.startTime || null,
+        endTime: s.endTime || null,
+        handsPlayed: (s.handsPlayed === undefined || s.handsPlayed === null || s.handsPlayed === '') ? null : parseInt(s.handsPlayed, 10),
+        description: s.description ?? '',
+        stake: s.stake ?? '',
+        currency: s.currency || defaultCurrency,
+        currencyCode: s.currencyCode || defaultCurrencyCode,
+        buyIn: (s.buyIn === undefined || s.buyIn === null || s.buyIn === '') ? null : parseFloat(s.buyIn),
+        result: parseFloat(s.result) || 0,
+        comments: s.comments ?? '',
+        hands: (hands && hands.length) ? hands : null
+      };
+    });
+  }
+
+  function importFromCsv(text) {
+    const rows = parseCsv(text);
+    if (!rows.length) throw new Error('CSV file has no rows.');
+    const header = rows[0].map(h => h.trim().toLowerCase());
+    const idx = (name) => header.indexOf(name);
+    if (idx('date') === -1 || idx('description') === -1 || idx('result') === -1) {
+      throw new Error('CSV must have date, description, and result columns.');
+    }
+    return rows.slice(1).map(r => {
+      let hands = null;
+      if (idx('hands') !== -1 && r[idx('hands')]) {
+        try {
+          const parsed = JSON.parse(r[idx('hands')]);
+          if (Array.isArray(parsed) && parsed.length) hands = parsed;
+        } catch (e) { /* ignore malformed hands JSON */ }
+      }
+      if (!hands) {
+        const preflop = idx('handpreflop') !== -1 ? (r[idx('handpreflop')] || '') : '';
+        const flop = idx('handflop') !== -1 ? (r[idx('handflop')] || '') : '';
+        const turn = idx('handturn') !== -1 ? (r[idx('handturn')] || '') : '';
+        const river = idx('handriver') !== -1 ? (r[idx('handriver')] || '') : '';
+        if (preflop || flop || turn || river) hands = [{ preflop, flop, turn, river }];
+      }
+      return {
+        id: (idx('id') !== -1 && r[idx('id')]) ? Number(r[idx('id')]) || Date.now() + Math.random() : Date.now() + Math.random(),
+        date: r[idx('date')] || todayStamp(),
+        startTime: idx('starttime') !== -1 ? (r[idx('starttime')] || null) : null,
+        endTime: idx('endtime') !== -1 ? (r[idx('endtime')] || null) : null,
+        handsPlayed: (idx('handsplayed') !== -1 && r[idx('handsplayed')] !== '') ? parseInt(r[idx('handsplayed')], 10) : null,
+        description: r[idx('description')] || '',
+        stake: idx('stake') !== -1 ? (r[idx('stake')] || '') : '',
+        currency: idx('currency') !== -1 ? (r[idx('currency')] || defaultCurrency) : defaultCurrency,
+        currencyCode: idx('currencycode') !== -1 ? (r[idx('currencycode')] || defaultCurrencyCode) : defaultCurrencyCode,
+        buyIn: (idx('buyin') !== -1 && r[idx('buyin')] !== '') ? parseFloat(r[idx('buyin')]) : null,
+        result: parseFloat(r[idx('result')]) || 0,
+        comments: idx('comments') !== -1 ? (r[idx('comments')] || '') : '',
+        hands
+      };
+    });
+  }
+
+  document.getElementById('importInput').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      let imported;
+      if (file.name.toLowerCase().endsWith('.json')) {
+        imported = importFromJson(text);
+      } else if (file.name.toLowerCase().endsWith('.csv')) {
+        imported = importFromCsv(text);
+      } else {
+        throw new Error('Please choose a .json or .csv file.');
+      }
+
+      // Merge, avoiding duplicate ids
+      const existingIds = new Set(sessions.map(s => s.id));
+      let added = 0;
+      imported.forEach(s => {
+        if (!existingIds.has(s.id)) {
+          sessions.push(s);
+          existingIds.add(s.id);
+          added++;
+        }
+      });
+
+      render();
+      await saveSessions();
+      showBackupMsg(`Imported ${added} new session${added === 1 ? '' : 's'} (${imported.length - added} duplicate${imported.length - added === 1 ? '' : 's'} skipped).`, 'ok');
+    } catch (err) {
+      showBackupMsg('Import failed: ' + err.message, 'err');
+    } finally {
+      e.target.value = '';
+    }
+  });
+
+  // ---------- Google Drive sync (standalone OAuth) ----------
+  // Same pattern as the Task Tracking app: this app's own Google Cloud
+  // OAuth client ID is baked in below rather than typed in per-device.
+  // Replace this with your own Client ID if you deploy your own copy
+  // (see "Deploying your own copy?" in the Drive sync panel below).
+  const GOOGLE_CLIENT_ID = 'YOUR_CLIENT_ID.apps.googleusercontent.com';
+  // Optional: hint a specific Google account to skip the account picker
+  // on every sign-in. Leave blank to let Google ask which account to use.
+  const GOOGLE_ACCOUNT_HINT = '';
+
+  const DRIVE_LAST_SYNC_KEY = 'poker-drive-last-sync';
+  const DRIVE_FILE_NAME = 'poker-sessions-backup.json';
+  const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
+
+  let gisLoaded = false;
+  let tokenClient = null;
+  let driveAccessToken = null;
+  let driveFileId = null;
+  let driveSignedIn = false;
+
+  const drivePanelToggle = document.getElementById('drivePanelToggle');
+  const drivePanelBody = document.getElementById('drivePanelBody');
+  const drivePanelChevron = document.getElementById('drivePanelChevron');
+  const driveSignInBtn = document.getElementById('driveSignInBtn');
+  const drivePushBtn = document.getElementById('drivePushBtn');
+  const drivePullBtn = document.getElementById('drivePullBtn');
+  const driveAutoSyncStatus = document.getElementById('driveAutoSyncStatus');
+  const driveMsg = document.getElementById('driveMsg');
+  const driveLastSyncEl = document.getElementById('driveLastSync');
+
+  function showDriveMsg(text, kind) {
+    driveMsg.textContent = text;
+    driveMsg.className = 'backup-msg' + (kind ? ' ' + kind : '');
+  }
+
+  function fmtSyncTimestamp(iso) {
+    const d = new Date(iso);
+    const diffMs = Date.now() - d.getTime();
+    const diffMin = Math.round(diffMs / 60000);
+    if (diffMin < 1) return 'just now';
+    if (diffMin < 60) return `${diffMin} min ago`;
+    const diffHr = Math.round(diffMin / 60);
+    if (diffHr < 24) return `${diffHr} hr ago`;
+    return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  }
+
+  async function renderLastSync() {
+    const stored = await store.get(DRIVE_LAST_SYNC_KEY);
+    driveLastSyncEl.textContent = stored ? `Last synced ${fmtSyncTimestamp(stored)}` : 'Never synced yet';
+  }
+
+  async function recordSyncNow() {
+    const iso = new Date().toISOString();
+    await store.set(DRIVE_LAST_SYNC_KEY, iso);
+    driveLastSyncEl.textContent = `Last synced ${fmtSyncTimestamp(iso)}`;
+  }
+
+
+  drivePanelToggle.addEventListener('click', () => {
+    const isHidden = drivePanelBody.hidden;
+    drivePanelBody.hidden = !isHidden;
+    drivePanelChevron.classList.toggle('open', isHidden);
+  });
+
+  function loadGisScript() {
+    return new Promise((resolve, reject) => {
+      if (gisLoaded) return resolve();
+      const script = document.createElement('script');
+      script.src = 'https://accounts.google.com/gsi/client';
+      script.async = true;
+      script.defer = true;
+      script.onload = () => { gisLoaded = true; resolve(); };
+      script.onerror = () => reject(new Error('Could not load Google Sign-In. Check your connection.'));
+      document.head.appendChild(script);
+    });
+  }
+
+  async function initGisIfNeeded() {
+    await loadGisScript();
+    if (!window.google || !window.google.accounts || !window.google.accounts.oauth2) {
+      throw new Error('Google Sign-In script did not initialize.');
+    }
+    if (tokenClient) return;
+    tokenClient = window.google.accounts.oauth2.initTokenClient({
+      client_id: GOOGLE_CLIENT_ID,
+      scope: DRIVE_SCOPE,
+      hint: GOOGLE_ACCOUNT_HINT || undefined,
+      callback: () => {} // overridden per-request below
+    });
+    driveSignInBtn.disabled = false;
+  }
+
+  function requestDriveToken(opts = {}) {
+    const { silent = false, timeoutMs = 4000 } = opts;
+    const tokenPromise = new Promise((resolve, reject) => {
+      if (!tokenClient) { reject(new Error('Sign-in not initialized yet.')); return; }
+      tokenClient.callback = (resp) => {
+        if (resp && resp.access_token) {
+          driveAccessToken = resp.access_token;
+          resolve(resp.access_token);
+        } else {
+          reject(new Error('Google did not return an access token.'));
+        }
+      };
+      const prompt = silent ? '' : (driveAccessToken ? '' : 'consent');
+      tokenClient.requestAccessToken({ prompt });
+    });
+
+    if (!silent) return tokenPromise;
+
+    // Silent attempts (used for auto-sync) must not hang forever if Google
+    // never calls back because no session/consent already exists.
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Silent sign-in timed out.')), timeoutMs)
+    );
+    return Promise.race([tokenPromise, timeoutPromise]);
+  }
+
+  function onSignedIn() {
+    driveSignedIn = true;
+    drivePushBtn.disabled = false;
+    drivePullBtn.disabled = false;
+    driveAutoSyncStatus.textContent = 'Signed in — this device stays synced automatically: pulling on load, pushing after every change.';
+  }
+
+  driveSignInBtn.addEventListener('click', async () => {
+    try {
+      showDriveMsg('Opening Google sign-in…');
+      await initGisIfNeeded();
+      await requestDriveToken();
+      onSignedIn();
+      const result = await pullFromDrive();
+      if (result.added) {
+        render();
+        await saveSessions({ skipAutoPush: true });
+      }
+      await recordSyncNow();
+      showDriveMsg('Signed in and synced. Auto-sync is on for this device from now on.', 'ok');
+    } catch (err) {
+      showDriveMsg('Sign-in failed: ' + err.message, 'err');
+    }
+  });
+
+  async function driveApiFetch(url, options = {}) {
+    if (!driveAccessToken) await requestDriveToken();
+    const res = await fetch(url, {
+      ...options,
+      headers: {
+        ...(options.headers || {}),
+        Authorization: 'Bearer ' + driveAccessToken
+      }
+    });
+    if (res.status === 401) {
+      // Token expired — request a fresh one and retry once.
+      driveAccessToken = null;
+      await requestDriveToken();
+      return fetch(url, {
+        ...options,
+        headers: {
+          ...(options.headers || {}),
+          Authorization: 'Bearer ' + driveAccessToken
+        }
+      });
+    }
+    return res;
+  }
+
+  async function findDriveFileId() {
+    if (driveFileId) return driveFileId;
+    const q = encodeURIComponent(`name='${DRIVE_FILE_NAME}' and trashed=false`);
+    const res = await driveApiFetch(`https://www.googleapis.com/drive/v3/files?q=${q}&spaces=drive&fields=files(id,name)`);
+    if (!res.ok) throw new Error('Could not search Drive (status ' + res.status + ').');
+    const data = await res.json();
+    if (data.files && data.files.length) {
+      driveFileId = data.files[0].id;
+      return driveFileId;
+    }
+    return null;
+  }
+
+  async function createDriveFile() {
+    const res = await driveApiFetch('https://www.googleapis.com/drive/v3/files', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: DRIVE_FILE_NAME, mimeType: 'application/json' })
+    });
+    if (!res.ok) throw new Error('Could not create the Drive file (status ' + res.status + ').');
+    const data = await res.json();
+    driveFileId = data.id;
+    return driveFileId;
+  }
+
+  async function pushToDrive() {
+    let fileId = await findDriveFileId();
+    if (!fileId) fileId = await createDriveFile();
+    const res = await driveApiFetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(sessions, null, 2)
+    });
+    if (!res.ok) throw new Error('Upload failed (status ' + res.status + ').');
+  }
+
+  async function pullFromDrive() {
+    const fileId = await findDriveFileId();
+    if (!fileId) return { found: false, added: 0 };
+    const res = await driveApiFetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`);
+    if (!res.ok) throw new Error('Download failed (status ' + res.status + ').');
+    const text = await res.text();
+    const imported = importFromJson(text);
+
+    const existingIds = new Set(sessions.map(s => s.id));
+    let added = 0;
+    imported.forEach(s => {
+      if (!existingIds.has(s.id)) {
+        sessions.push(s);
+        existingIds.add(s.id);
+        added++;
+      }
+    });
+    return { found: true, added };
+  }
+
+  drivePushBtn.addEventListener('click', async () => {
+    try {
+      showDriveMsg('Pushing to Drive…');
+      await pushToDrive();
+      await recordSyncNow();
+      showDriveMsg(`Pushed ${sessions.length} session${sessions.length === 1 ? '' : 's'} to Drive.`, 'ok');
+    } catch (err) {
+      showDriveMsg('Push failed: ' + err.message, 'err');
+    }
+  });
+
+  drivePullBtn.addEventListener('click', async () => {
+    try {
+      showDriveMsg('Pulling from Drive…');
+      const result = await pullFromDrive();
+      if (!result.found) {
+        showDriveMsg('No backup file found on Drive yet — push first.', 'err');
+        return;
+      }
+      render();
+      await saveSessions({ skipAutoPush: true });
+      await recordSyncNow();
+      showDriveMsg(`Pulled from Drive: ${result.added} new session${result.added === 1 ? '' : 's'} added.`, 'ok');
+    } catch (err) {
+      showDriveMsg('Pull failed: ' + err.message, 'err');
+    }
+  });
+
+  // Fire-and-forget push used after every local change, once signed in.
+  // Never blocks the UI and never throws — failures show as a quiet status
+  // message instead of interrupting whatever the person was doing.
+  function autoPushIfEnabled() {
+    if (!driveSignedIn) return;
+    pushToDrive()
+      .then(() => { recordSyncNow(); showDriveMsg('Auto-synced to Drive.', 'ok'); })
+      .catch(err => showDriveMsg('Auto-sync push failed: ' + err.message, 'err'));
+  }
+
+  // On page load: try a silent (no popup) sign-in and pull automatically —
+  // no toggle or extra click required, the same auto-sign-in behavior as
+  // the Task Tracking app. If Google can't do it silently (e.g. first time
+  // in this browser, or the grant expired), this quietly gives up and
+  // leaves it to a manual "Sign in with Google" click, no error shown.
+  async function tryAutoSyncOnLoad() {
+    try {
+      await initGisIfNeeded();
+      await requestDriveToken({ silent: true });
+      onSignedIn();
+      const result = await pullFromDrive();
+      if (result.added) {
+        render();
+        await saveSessions({ skipAutoPush: true });
+      }
+      await recordSyncNow();
+      showDriveMsg(`Auto-synced on load: ${result.added} new session${result.added === 1 ? '' : 's'} pulled.`, 'ok');
+    } catch (err) {
+      // Silent sign-in unavailable (e.g. first time in this browser) —
+      // leave it to a manual "Sign in with Google" click, no error shown.
+    }
+  }
+
+  renderLastSync();
+  tryAutoSyncOnLoad();
+
+  (async function init() {
+    await loadDefaultCurrency();
+    await loadSessions();
+  })();
+</script>
+</body>
+</html>
