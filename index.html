@@ -192,6 +192,61 @@
     color: var(--muted);
   }
 
+  /* HU / non-HU format switcher */
+  .format-tabs {
+    display: inline-flex;
+    gap: 2px;
+    padding: 3px;
+    margin-bottom: 16px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: rgba(0,0,0,0.18);
+  }
+
+  .format-tab {
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 12px;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    color: var(--muted);
+    background: transparent;
+    border: 0;
+    border-radius: 6px;
+    padding: 6px 12px;
+    cursor: pointer;
+  }
+
+  .format-tab:hover { color: var(--cream); }
+
+  .format-tab.active {
+    background: var(--felt-light);
+    color: var(--cream);
+  }
+
+  .format-tab:focus-visible {
+    outline: 2px solid var(--gold);
+    outline-offset: 1px;
+  }
+
+  .format-tab-count {
+    font-family: 'IBM Plex Mono', monospace;
+    color: var(--gold-dim);
+    margin-left: 4px;
+  }
+
+  .hu-tag {
+    display: inline-block;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 1px;
+    color: var(--gold);
+    border: 1px solid var(--gold-dim);
+    border-radius: 4px;
+    padding: 0 5px;
+    margin-left: 8px;
+    vertical-align: 2px;
+  }
+
   /* Chip trail */
   .trail {
     display: flex;
@@ -918,9 +973,14 @@
   </div>
 
   <div class="headline">
+    <div class="format-tabs" id="formatTabs" role="tablist" aria-label="Filter results by format">
+      <button type="button" class="format-tab active" data-format="all" role="tab" aria-selected="true">All<span class="format-tab-count" id="formatCountAll">0</span></button>
+      <button type="button" class="format-tab" data-format="nonhu" role="tab" aria-selected="false">Non-HU<span class="format-tab-count" id="formatCountNonHu">0</span></button>
+      <button type="button" class="format-tab" data-format="hu" role="tab" aria-selected="false">HU<span class="format-tab-count" id="formatCountHu">0</span></button>
+    </div>
     <div class="headline-top">
       <div>
-        <p class="net-label">Net result</p>
+        <p class="net-label" id="netLabel">Net result</p>
         <div class="net-value-container single" id="netValue">
           <span class="net-value-line">$0</span>
         </div>
@@ -1011,6 +1071,13 @@
       </div>
       <div class="attach-previews" id="attachPreviews"></div>
       <p class="attach-msg" id="attachMsg"></p>
+    </div>
+
+    <div class="hand-toggle-row">
+      <label class="hand-toggle-label">
+        <input type="checkbox" id="isHU">
+        <span>Heads-up (HU) session</span>
+      </label>
     </div>
 
     <div class="hand-toggle-row">
@@ -1228,14 +1295,57 @@
     return groups;
   }
 
+  // ---------- HU / non-HU format filter (headline only) ----------
+  const FORMAT_FILTER_KEY = 'poker-format-filter';
+  const FORMAT_LABELS = { all: 'Net result', nonhu: 'Net result · Non-HU', hu: 'Net result · HU' };
+  let formatFilter = 'all';
+
+  function sessionsForFormat(list, format) {
+    if (format === 'hu') return list.filter(s => s.isHU === true);
+    if (format === 'nonhu') return list.filter(s => s.isHU !== true);
+    return list;
+  }
+
+  function renderFormatTabs() {
+    document.querySelectorAll('#formatTabs .format-tab').forEach(btn => {
+      const active = btn.dataset.format === formatFilter;
+      btn.classList.toggle('active', active);
+      btn.setAttribute('aria-selected', active ? 'true' : 'false');
+    });
+    const huCount = sessions.filter(s => s.isHU === true).length;
+    document.getElementById('formatCountAll').textContent = sessions.length;
+    document.getElementById('formatCountHu').textContent = huCount;
+    document.getElementById('formatCountNonHu').textContent = sessions.length - huCount;
+    document.getElementById('netLabel').textContent = FORMAT_LABELS[formatFilter];
+  }
+
+  document.getElementById('formatTabs').addEventListener('click', async (e) => {
+    const btn = e.target.closest('.format-tab');
+    if (!btn || btn.dataset.format === formatFilter) return;
+    formatFilter = btn.dataset.format;
+    render();
+    await store.set(FORMAT_FILTER_KEY, formatFilter);
+  });
+
+  async function loadFormatFilter() {
+    const stored = await store.get(FORMAT_FILTER_KEY);
+    if (stored === 'hu' || stored === 'nonhu' || stored === 'all') formatFilter = stored;
+  }
+
   function render() {
     const body = document.getElementById('ledgerBody');
     const count = sessions.length;
     document.getElementById('ledgerCount').textContent = count === 1 ? '1 entry' : `${count} entries`;
 
+    // Headline stats cover only the selected format (All / Non-HU / HU).
+    // The ledger below always lists every session.
+    renderFormatTabs();
+    const view = sessionsForFormat(sessions, formatFilter);
+    const viewCount = view.length;
+
     // Headline stats — grouped per currency, since summing across currencies
     // as raw numbers would be meaningless.
-    const groups = groupSessionsByCurrency(sessions);
+    const groups = groupSessionsByCurrency(view);
     const currencyKeys = Object.keys(groups);
     const multiCurrency = currencyKeys.length > 1;
 
@@ -1250,14 +1360,14 @@
       }).join('');
     }
 
-    document.getElementById('statCount').textContent = count;
+    document.getElementById('statCount').textContent = viewCount;
 
     const winRateEl = document.getElementById('statWinRate');
-    if (count === 0) {
+    if (viewCount === 0) {
       winRateEl.textContent = '—';
     } else {
-      const wins = sessions.filter(s => s.result > 0).length;
-      winRateEl.textContent = Math.round((wins / count) * 100) + '%';
+      const wins = view.filter(s => s.result > 0).length;
+      winRateEl.textContent = Math.round((wins / viewCount) * 100) + '%';
     }
 
     const bwContainer = document.getElementById('bestWorstStats');
@@ -1279,8 +1389,11 @@
     const trail = document.getElementById('trail');
     if (count === 0) {
       trail.innerHTML = '<span class="trail-empty">Log a session to start the trail.</span>';
+    } else if (viewCount === 0) {
+      const which = formatFilter === 'hu' ? 'HU' : 'non-HU';
+      trail.innerHTML = `<span class="trail-empty">No ${which} sessions yet. Tick "Heads-up (HU) session" when logging, or edit an existing session.</span>`;
     } else {
-      const chrono = [...sessions].sort((a, b) => a.date.localeCompare(b.date) || a.id - b.id);
+      const chrono = [...view].sort((a, b) => a.date.localeCompare(b.date) || a.id - b.id);
       const maxAbs = Math.max(...chrono.map(s => Math.abs(s.result)), 1);
       trail.innerHTML = chrono.map(s => {
         const size = 8 + (Math.abs(s.result) / maxAbs) * 12;
@@ -1300,7 +1413,7 @@
       <div class="row" data-id="${s.id}">
         <div class="col-date">${fmtDate(s.date)}${renderTimeRange(s)}</div>
         <div class="col-desc">
-          <div class="desc-text">${escapeHtml(s.description)}</div>
+          <div class="desc-text">${escapeHtml(s.description)}${s.isHU === true ? '<span class="hu-tag" title="Heads-up session">HU</span>' : ''}</div>
           ${s.comments ? `<div class="comment-text">${escapeHtml(s.comments)}</div>` : ''}
           ${renderSessionMetaLine(s)}
           ${renderRowAttachments(s.attachments)}
@@ -1683,6 +1796,7 @@
     sessionCurrencyCodeInput.value = defaultCurrencyCode;
     document.getElementById('handFields').hidden = true;
     document.getElementById('handToggle').checked = false;
+    document.getElementById('isHU').checked = false;
     clearHandBlocks();
     pendingFiles = [];
     showAttachMsg('');
@@ -1709,6 +1823,7 @@
     document.getElementById('buyIn').value = (session.buyIn === null || session.buyIn === undefined) ? '' : session.buyIn;
     document.getElementById('result').value = session.result;
     document.getElementById('comments').value = session.comments || '';
+    document.getElementById('isHU').checked = session.isHU === true;
 
     pendingFiles = (session.attachments || []).map(a => ({
       file: null, name: a.name, size: a.size, type: a.type,
@@ -1758,6 +1873,7 @@
     const buyInVal = document.getElementById('buyIn').value;
     const resultVal = document.getElementById('result').value;
     const comments = document.getElementById('comments').value.trim();
+    const isHU = document.getElementById('isHU').checked;
 
     const hands = collectHandsFromForm();
 
@@ -1784,6 +1900,7 @@
       buyIn: buyInVal === '' ? null : parseFloat(buyInVal),
       result: parseFloat(resultVal),
       comments,
+      isHU,
       hands: hands.length ? hands : null,
       attachments: attachments.length ? attachments : null
     };
@@ -1846,7 +1963,7 @@
   }
 
   document.getElementById('exportCsvBtn').addEventListener('click', () => {
-    const header = ['id', 'date', 'startTime', 'endTime', 'handsPlayed', 'description', 'stake', 'currencyCode', 'currency', 'buyIn', 'result', 'comments', 'hands', 'attachments'];
+    const header = ['id', 'date', 'startTime', 'endTime', 'handsPlayed', 'description', 'stake', 'currencyCode', 'currency', 'buyIn', 'result', 'isHU', 'comments', 'hands', 'attachments'];
     const lines = [header.join(',')];
     sessions.forEach(s => {
       const handsArr = getHandsArray(s).filter(h => h && (h.preflop || h.flop || h.turn || h.river));
@@ -1855,7 +1972,7 @@
         handsPlayed: s.handsPlayed ?? '',
         description: s.description, stake: s.stake,
         currencyCode: s.currencyCode || defaultCurrencyCode, currency: s.currency || defaultCurrency,
-        buyIn: s.buyIn, result: s.result, comments: s.comments,
+        buyIn: s.buyIn, result: s.result, isHU: s.isHU === true ? 'true' : 'false', comments: s.comments,
         hands: handsArr.length ? JSON.stringify(handsArr) : '',
         attachments: (s.attachments && s.attachments.length) ? JSON.stringify(s.attachments) : ''
       };
@@ -1918,6 +2035,7 @@
         buyIn: (s.buyIn === undefined || s.buyIn === null || s.buyIn === '') ? null : parseFloat(s.buyIn),
         result: parseFloat(s.result) || 0,
         comments: s.comments ?? '',
+        isHU: s.isHU === true || s.isHU === 'true',
         hands: (hands && hands.length) ? hands : null,
         attachments: (Array.isArray(s.attachments) && s.attachments.length) ? s.attachments : null,
         updatedAt: s.updatedAt ?? null
@@ -1968,10 +2086,30 @@
         buyIn: (idx('buyin') !== -1 && r[idx('buyin')] !== '') ? parseFloat(r[idx('buyin')]) : null,
         result: parseFloat(r[idx('result')]) || 0,
         comments: idx('comments') !== -1 ? (r[idx('comments')] || '') : '',
+        isHU: idx('ishu') !== -1 ? ['true', '1', 'yes', 'y', 'hu'].includes(String(r[idx('ishu')] || '').trim().toLowerCase()) : false,
         hands,
         attachments
       };
     });
+  }
+
+  // Merge one incoming session (from an imported file or from Drive) into an
+  // existing local copy with the same id. Returns the merged session, or null
+  // if the local copy should be kept as-is.
+  //  - Newer edit timestamp wins outright (last-write-wins).
+  //  - Otherwise, fill in attachments the local copy is missing. This repairs
+  //    sessions that an older version of the app saved without their
+  //    attachment links, without overwriting anything else locally.
+  function mergeIncomingSession(local, incoming) {
+    const incomingTime = incoming.updatedAt || 0;
+    const localTime = local.updatedAt || 0;
+    if (incomingTime > localTime) return incoming;
+    const localHasAtt = Array.isArray(local.attachments) && local.attachments.length;
+    const incomingHasAtt = Array.isArray(incoming.attachments) && incoming.attachments.length;
+    if (!localHasAtt && incomingHasAtt) {
+      return { ...local, attachments: incoming.attachments };
+    }
+    return null;
   }
 
   document.getElementById('importInput').addEventListener('change', async (e) => {
@@ -1988,20 +2126,31 @@
         throw new Error('Please choose a .json or .csv file.');
       }
 
-      // Merge, avoiding duplicate ids
-      const existingIds = new Set(sessions.map(s => s.id));
+      // Merge: add new sessions, and update/repair ones that already exist.
+      const localById = new Map(sessions.map(s => [s.id, s]));
       let added = 0;
+      let updated = 0;
       imported.forEach(s => {
-        if (!existingIds.has(s.id)) {
+        const local = localById.get(s.id);
+        if (!local) {
           sessions.push(s);
-          existingIds.add(s.id);
+          localById.set(s.id, s);
           added++;
+          return;
+        }
+        const merged = mergeIncomingSession(local, s);
+        if (merged) {
+          const i = sessions.findIndex(x => x.id === s.id);
+          sessions[i] = merged;
+          localById.set(s.id, merged);
+          updated++;
         }
       });
 
       render();
       await saveSessions();
-      showBackupMsg(`Imported ${added} new session${added === 1 ? '' : 's'} (${imported.length - added} duplicate${imported.length - added === 1 ? '' : 's'} skipped).`, 'ok');
+      const unchanged = imported.length - added - updated;
+      showBackupMsg(`Imported ${added} new session${added === 1 ? '' : 's'}, updated ${updated} existing (${unchanged} unchanged).`, 'ok');
     } catch (err) {
       showBackupMsg('Import failed: ' + err.message, 'err');
     } finally {
@@ -2265,14 +2414,13 @@
         added++;
         return;
       }
-      // Session exists on both sides — last-write-wins by updatedAt.
-      // If either side is missing a timestamp (older data from before this
-      // fix), don't clobber local edits with an equally-unclear remote copy.
-      const remoteTime = remote.updatedAt || 0;
-      const localTime = local.updatedAt || 0;
-      if (remoteTime > localTime) {
+      // Session exists on both sides — last-write-wins by updatedAt, plus
+      // restore any attachments the local copy lost (see mergeIncomingSession).
+      const merged = mergeIncomingSession(local, remote);
+      if (merged) {
         const idx = sessions.findIndex(s => s.id === remote.id);
-        sessions[idx] = remote;
+        sessions[idx] = merged;
+        localById.set(remote.id, merged);
         updated++;
       }
     });
@@ -2346,6 +2494,7 @@
 
   (async function init() {
     await loadDefaultCurrency();
+    await loadFormatFilter();
     await loadSessions();
   })();
 </script>
