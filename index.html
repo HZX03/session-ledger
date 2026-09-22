@@ -302,6 +302,144 @@
     margin-bottom: 4px;
   }
 
+  .attach-section {
+    margin-bottom: 16px;
+  }
+
+  .attach-section > label {
+    display: block;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+
+  .attach-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .attach-hint {
+    font-size: 11.5px;
+    color: var(--muted);
+    line-height: 1.4;
+  }
+
+  .attach-previews {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 10px;
+  }
+
+  .attach-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 8px 10px;
+    background: rgba(0,0,0,0.15);
+  }
+
+  .attach-item-name {
+    flex: 1;
+    font-size: 13px;
+    color: var(--cream);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .attach-item-size {
+    font-size: 11px;
+    color: var(--muted);
+    font-family: 'IBM Plex Mono', monospace;
+    flex-shrink: 0;
+  }
+
+  .attach-item-status {
+    font-size: 11px;
+    flex-shrink: 0;
+    min-width: 90px;
+    text-align: right;
+  }
+
+  .attach-item-status.pending { color: var(--muted); }
+  .attach-item-status.uploading { color: var(--gold-dim); }
+  .attach-item-status.uploaded { color: var(--gold); }
+  .attach-item-status.error { color: var(--red); }
+
+  .attach-item-upload-btn {
+    background: var(--gold);
+    color: #1A1408;
+    border: none;
+    border-radius: 5px;
+    padding: 5px 10px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+
+  .attach-item-upload-btn:hover { background: #d9b45c; }
+  .attach-item-upload-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .attach-item-remove {
+    background: none;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 15px;
+    line-height: 1;
+    flex-shrink: 0;
+    padding: 2px 4px;
+  }
+
+  .attach-item-remove:hover { color: var(--red); }
+
+  .attach-msg {
+    font-size: 12px;
+    color: var(--muted);
+    margin: 8px 0 0;
+    min-height: 14px;
+  }
+
+  .attach-msg.err { color: var(--red); }
+  .attach-msg.ok { color: var(--gold); }
+
+  .row-attachments {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: 8px;
+  }
+
+  .row-attach-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    align-self: flex-start;
+    background: none;
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    padding: 4px 9px;
+    font-size: 11.5px;
+    color: var(--muted);
+    cursor: pointer;
+    font-family: 'IBM Plex Mono', monospace;
+  }
+
+  .row-attach-btn:hover {
+    border-color: var(--gold-dim);
+    color: var(--cream);
+  }
+
+  .row-attach-btn:disabled { opacity: 0.6; cursor: wait; }
+
   .hand-toggle-label {
     display: inline-flex;
     align-items: center;
@@ -864,6 +1002,17 @@
       <textarea id="comments" placeholder="How it played out, notes for next time..."></textarea>
     </div>
 
+    <div class="attach-section">
+      <label for="attachmentInput">Attach files (optional)</label>
+      <div class="attach-row">
+        <button type="button" class="btn-ghost" id="attachBtn">+ Add file</button>
+        <input type="file" id="attachmentInput" accept="image/*,.pdf,.txt,.json,.csv" multiple hidden>
+        <span class="attach-hint">Screenshots, hand history exports, receipts. Files upload straight to your Google Drive — nothing is stored on this device or in this app. Requires being signed in to Drive.</span>
+      </div>
+      <div class="attach-previews" id="attachPreviews"></div>
+      <p class="attach-msg" id="attachMsg"></p>
+    </div>
+
     <div class="hand-toggle-row">
       <label class="hand-toggle-label">
         <input type="checkbox" id="handToggle">
@@ -1154,6 +1303,7 @@
           <div class="desc-text">${escapeHtml(s.description)}</div>
           ${s.comments ? `<div class="comment-text">${escapeHtml(s.comments)}</div>` : ''}
           ${renderSessionMetaLine(s)}
+          ${renderRowAttachments(s.attachments)}
           ${renderHandNotes(s.id, getHandsArray(s))}
         </div>
         <div class="col-stake">${escapeHtml(s.stake || '—')}</div>
@@ -1289,6 +1439,7 @@
     valid.splice(handIndex, 1);
     session.hands = valid.length ? valid : null;
     delete session.hand; // migrate off the legacy single-hand field
+    session.updatedAt = Date.now();
     render();
     await saveSessions();
   }
@@ -1383,6 +1534,139 @@
     return hands;
   }
 
+  // ---------- File attachments ----------
+  // Files live as base64 data URLs right inside each session's data, since
+  // there's no backend to upload to. That keeps everything working offline
+  // and synced through the same storage/Drive path as everything else, but
+  // ---------- File attachments (stored in Google Drive, not locally) ----------
+  // Files never touch local/window storage. Each file gets uploaded to Drive
+  // individually via its own "Upload" button, and only a Drive file
+  // reference (id, name, type, size) is saved with the session. Viewing a
+  // file later pulls its bytes from Drive on demand — nothing is cached.
+  let pendingFiles = []; // { file: File|null, name, size, type, driveFileId, status }
+  const attachPreviewsEl = document.getElementById('attachPreviews');
+  const attachMsgEl = document.getElementById('attachMsg');
+  const attachmentInput = document.getElementById('attachmentInput');
+
+  function showAttachMsg(text, kind) {
+    attachMsgEl.textContent = text;
+    attachMsgEl.className = 'attach-msg' + (kind ? ' ' + kind : '');
+  }
+
+  function fmtFileSize(bytes) {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
+  function renderAttachPreviews() {
+    if (!pendingFiles.length) {
+      attachPreviewsEl.innerHTML = '';
+      return;
+    }
+    attachPreviewsEl.innerHTML = pendingFiles.map((f, i) => {
+      const statusText = { pending: 'Not uploaded', uploading: 'Uploading…', uploaded: 'Uploaded ✓', error: 'Upload failed' }[f.status];
+      const showUploadBtn = f.status === 'pending' || f.status === 'error';
+      return `<div class="attach-item" data-index="${i}">
+        <span class="attach-item-name" title="${escapeHtml(f.name)}">${escapeHtml(f.name)}</span>
+        <span class="attach-item-size">${fmtFileSize(f.size)}</span>
+        <span class="attach-item-status ${f.status}">${statusText}</span>
+        ${showUploadBtn ? `<button type="button" class="attach-item-upload-btn" data-index="${i}">Upload</button>` : ''}
+        <button type="button" class="attach-item-remove" data-index="${i}" aria-label="Remove file">&times;</button>
+      </div>`;
+    }).join('');
+
+    attachPreviewsEl.querySelectorAll('.attach-item-upload-btn').forEach(btn => {
+      btn.addEventListener('click', () => uploadPendingFile(Number(btn.dataset.index)));
+    });
+    attachPreviewsEl.querySelectorAll('.attach-item-remove').forEach(btn => {
+      btn.addEventListener('click', () => {
+        pendingFiles.splice(Number(btn.dataset.index), 1);
+        renderAttachPreviews();
+      });
+    });
+  }
+
+  async function uploadPendingFile(index) {
+    const entry = pendingFiles[index];
+    if (!entry || !entry.file) return;
+    if (!driveSignedIn) {
+      showAttachMsg('Sign in to Google Drive first (see the Drive panel below) before uploading files.', 'err');
+      return;
+    }
+    entry.status = 'uploading';
+    renderAttachPreviews();
+    try {
+      const driveFileId = await uploadFileToDrive(entry.file, entry.name, entry.type);
+      entry.driveFileId = driveFileId;
+      entry.status = 'uploaded';
+      entry.file = null; // release the in-memory file now that it's safely in Drive
+      showAttachMsg(`${entry.name} uploaded to Drive.`, 'ok');
+    } catch (err) {
+      entry.status = 'error';
+      showAttachMsg(`Upload failed for ${entry.name}: ${err.message}`, 'err');
+    }
+    renderAttachPreviews();
+  }
+
+  document.getElementById('attachBtn').addEventListener('click', () => attachmentInput.click());
+
+  attachmentInput.addEventListener('change', (e) => {
+    const files = Array.from(e.target.files || []);
+    showAttachMsg('');
+    files.forEach(file => {
+      pendingFiles.push({ file, name: file.name, size: file.size, type: file.type, driveFileId: null, status: 'pending' });
+    });
+    renderAttachPreviews();
+    attachmentInput.value = '';
+    if (files.length && !driveSignedIn) {
+      showAttachMsg('Added to the list — sign in to Google Drive below, then click Upload on each file.', 'err');
+    }
+  });
+
+  function renderRowAttachments(attachments) {
+    if (!attachments || !attachments.length) return '';
+    const items = attachments.map((a, i) => {
+      return `<button type="button" class="row-attach-btn" data-drive-id="${escapeHtml(a.driveFileId)}" data-name="${escapeHtml(a.name)}" data-type="${escapeHtml(a.type || '')}">⬇ ${escapeHtml(a.name)} (${fmtFileSize(a.size)})</button>`;
+    }).join('');
+    return `<div class="row-attachments">${items}</div>`;
+  }
+
+  async function viewDriveAttachment(btn) {
+    const driveFileId = btn.dataset.driveId;
+    const name = btn.dataset.name;
+    const type = btn.dataset.type;
+    if (!driveSignedIn) {
+      showDriveMsg('Sign in to Google Drive to pull attached files.', 'err');
+      return;
+    }
+    const originalText = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Pulling from Drive…';
+    try {
+      const blob = await downloadFileFromDrive(driveFileId, type);
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = name;
+      a.target = '_blank';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+    } catch (err) {
+      showDriveMsg(`Could not pull ${name} from Drive: ${err.message}`, 'err');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = originalText;
+    }
+  }
+
+  document.getElementById('ledgerBody').addEventListener('click', (e) => {
+    const btn = e.target.closest('.row-attach-btn');
+    if (btn) viewDriveAttachment(btn);
+  });
+
   let editingSessionId = null;
   const formTitleEl = document.getElementById('formTitle');
   const submitBtnEl = document.getElementById('submitBtn');
@@ -1400,6 +1684,9 @@
     document.getElementById('handFields').hidden = true;
     document.getElementById('handToggle').checked = false;
     clearHandBlocks();
+    pendingFiles = [];
+    showAttachMsg('');
+    renderAttachPreviews();
   }
 
   function startEditSession(id) {
@@ -1422,6 +1709,13 @@
     document.getElementById('buyIn').value = (session.buyIn === null || session.buyIn === undefined) ? '' : session.buyIn;
     document.getElementById('result').value = session.result;
     document.getElementById('comments').value = session.comments || '';
+
+    pendingFiles = (session.attachments || []).map(a => ({
+      file: null, name: a.name, size: a.size, type: a.type,
+      driveFileId: a.driveFileId, status: 'uploaded'
+    }));
+    showAttachMsg('');
+    renderAttachPreviews();
 
     clearHandBlocks();
     const existingHands = getHandsArray(session).filter(h => h && (h.preflop || h.flop || h.turn || h.river));
@@ -1472,6 +1766,12 @@
       return;
     }
 
+    const uploadedFiles = pendingFiles.filter(f => f.status === 'uploaded');
+    const notUploadedCount = pendingFiles.length - uploadedFiles.length;
+    const attachments = uploadedFiles.map(f => ({
+      name: f.name, size: f.size, type: f.type, driveFileId: f.driveFileId
+    }));
+
     const fields = {
       date,
       startTime: startTime || null,
@@ -1484,17 +1784,22 @@
       buyIn: buyInVal === '' ? null : parseFloat(buyInVal),
       result: parseFloat(resultVal),
       comments,
-      hands: hands.length ? hands : null
+      hands: hands.length ? hands : null,
+      attachments: attachments.length ? attachments : null
     };
 
     if (editingSessionId !== null) {
       const idx = sessions.findIndex(s => s.id === editingSessionId);
       if (idx !== -1) {
-        sessions[idx] = { ...sessions[idx], ...fields };
+        sessions[idx] = { ...sessions[idx], ...fields, updatedAt: Date.now() };
         delete sessions[idx].hand; // migrate off the legacy single-hand field
       }
     } else {
-      sessions.push({ id: Date.now(), ...fields });
+      sessions.push({ id: Date.now(), ...fields, updatedAt: Date.now() });
+    }
+
+    if (notUploadedCount > 0) {
+      errorEl.textContent = `Session saved, but ${notUploadedCount} file${notUploadedCount === 1 ? '' : 's'} weren't uploaded to Drive in time and were left off. Add ${notUploadedCount === 1 ? 'it' : 'them'} again if needed.`;
     }
 
     render();
@@ -1541,7 +1846,7 @@
   }
 
   document.getElementById('exportCsvBtn').addEventListener('click', () => {
-    const header = ['id', 'date', 'startTime', 'endTime', 'handsPlayed', 'description', 'stake', 'currencyCode', 'currency', 'buyIn', 'result', 'comments', 'hands'];
+    const header = ['id', 'date', 'startTime', 'endTime', 'handsPlayed', 'description', 'stake', 'currencyCode', 'currency', 'buyIn', 'result', 'comments', 'hands', 'attachments'];
     const lines = [header.join(',')];
     sessions.forEach(s => {
       const handsArr = getHandsArray(s).filter(h => h && (h.preflop || h.flop || h.turn || h.river));
@@ -1551,12 +1856,13 @@
         description: s.description, stake: s.stake,
         currencyCode: s.currencyCode || defaultCurrencyCode, currency: s.currency || defaultCurrency,
         buyIn: s.buyIn, result: s.result, comments: s.comments,
-        hands: handsArr.length ? JSON.stringify(handsArr) : ''
+        hands: handsArr.length ? JSON.stringify(handsArr) : '',
+        attachments: (s.attachments && s.attachments.length) ? JSON.stringify(s.attachments) : ''
       };
       lines.push(header.map(h => csvEscape(flat[h])).join(','));
     });
     downloadFile(`poker-sessions-${todayStamp()}.csv`, lines.join('\n'), 'text/csv');
-    showBackupMsg('Downloaded CSV — opens directly in Google Sheets for editing.', 'ok');
+    showBackupMsg('Downloaded CSV. Attachment references are included, but the actual files stay in Drive — this CSV alone can\'t open them.', 'ok');
   });
 
   document.getElementById('importBtn').addEventListener('click', () => {
@@ -1612,7 +1918,9 @@
         buyIn: (s.buyIn === undefined || s.buyIn === null || s.buyIn === '') ? null : parseFloat(s.buyIn),
         result: parseFloat(s.result) || 0,
         comments: s.comments ?? '',
-        hands: (hands && hands.length) ? hands : null
+        hands: (hands && hands.length) ? hands : null,
+        attachments: (Array.isArray(s.attachments) && s.attachments.length) ? s.attachments : null,
+        updatedAt: s.updatedAt ?? null
       };
     });
   }
@@ -1640,6 +1948,13 @@
         const river = idx('handriver') !== -1 ? (r[idx('handriver')] || '') : '';
         if (preflop || flop || turn || river) hands = [{ preflop, flop, turn, river }];
       }
+      let attachments = null;
+      if (idx('attachments') !== -1 && r[idx('attachments')]) {
+        try {
+          const parsed = JSON.parse(r[idx('attachments')]);
+          if (Array.isArray(parsed) && parsed.length) attachments = parsed;
+        } catch (e) { /* ignore malformed attachments JSON */ }
+      }
       return {
         id: (idx('id') !== -1 && r[idx('id')]) ? Number(r[idx('id')]) || Date.now() + Math.random() : Date.now() + Math.random(),
         date: r[idx('date')] || todayStamp(),
@@ -1653,7 +1968,8 @@
         buyIn: (idx('buyin') !== -1 && r[idx('buyin')] !== '') ? parseFloat(r[idx('buyin')]) : null,
         result: parseFloat(r[idx('result')]) || 0,
         comments: idx('comments') !== -1 ? (r[idx('comments')] || '') : '',
-        hands
+        hands,
+        attachments
       };
     });
   }
@@ -1694,18 +2010,18 @@
   });
 
   // ---------- Google Drive sync (standalone OAuth) ----------
-  // Same pattern as the Task Tracking app: this app's own Google Cloud
-  // OAuth client ID is baked in below rather than typed in per-device.
-  // Replace this with your own Client ID if you deploy your own copy
-  // (see "Deploying your own copy?" in the Drive sync panel below).
+  // This app's Google Cloud OAuth client ID is baked in (same pattern as the
+  // Task Tracking app) rather than typed in per-device. Replace it with your
+  // own if you deploy your own copy (see "Deploying your own copy?" below).
   const GOOGLE_CLIENT_ID = '572760733608-70ees164mlbs0vc054rkm9bmnapuvfs3.apps.googleusercontent.com';
-  // Optional: hint a specific Google account to skip the account picker
-  // on every sign-in. Leave blank to let Google ask which account to use.
+  // Optional: hint a specific Google account to skip the account picker.
   const GOOGLE_ACCOUNT_HINT = '';
-
   const DRIVE_LAST_SYNC_KEY = 'poker-drive-last-sync';
   const DRIVE_FILE_NAME = 'poker-sessions-backup.json';
   const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
+  // All session data and attachments are saved into this specific Drive
+  // folder rather than scattered at the root of the person's Drive.
+  const DRIVE_FOLDER_ID = '1hMzmcEleCwo3wXJ3dUpUoI-D_mMBanZx';
 
   let gisLoaded = false;
   let tokenClient = null;
@@ -1825,7 +2141,7 @@
       await requestDriveToken();
       onSignedIn();
       const result = await pullFromDrive();
-      if (result.added) {
+      if (result.added || result.updated) {
         render();
         await saveSessions({ skipAutoPush: true });
       }
@@ -1862,7 +2178,7 @@
 
   async function findDriveFileId() {
     if (driveFileId) return driveFileId;
-    const q = encodeURIComponent(`name='${DRIVE_FILE_NAME}' and trashed=false`);
+    const q = encodeURIComponent(`name='${DRIVE_FILE_NAME}' and trashed=false and '${DRIVE_FOLDER_ID}' in parents`);
     const res = await driveApiFetch(`https://www.googleapis.com/drive/v3/files?q=${q}&spaces=drive&fields=files(id,name)`);
     if (!res.ok) throw new Error('Could not search Drive (status ' + res.status + ').');
     const data = await res.json();
@@ -1877,12 +2193,44 @@
     const res = await driveApiFetch('https://www.googleapis.com/drive/v3/files', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: DRIVE_FILE_NAME, mimeType: 'application/json' })
+      body: JSON.stringify({ name: DRIVE_FILE_NAME, mimeType: 'application/json', parents: [DRIVE_FOLDER_ID] })
     });
     if (!res.ok) throw new Error('Could not create the Drive file (status ' + res.status + ').');
     const data = await res.json();
     driveFileId = data.id;
     return driveFileId;
+  }
+
+  // Uploads a single session attachment as its own standalone Drive file
+  // (separate from the JSON backup file), into the same target folder, and
+  // returns its Drive file ID. Named with a recognizable prefix so it's
+  // easy to spot in Drive.
+  async function uploadFileToDrive(file, name, mimeType) {
+    const createRes = await driveApiFetch('https://www.googleapis.com/drive/v3/files', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: `poker-attachment-${name}`, mimeType: mimeType || 'application/octet-stream', parents: [DRIVE_FOLDER_ID] })
+    });
+    if (!createRes.ok) throw new Error('Could not create file on Drive (status ' + createRes.status + ').');
+    const created = await createRes.json();
+    const fileId = created.id;
+
+    const uploadRes = await driveApiFetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': mimeType || 'application/octet-stream' },
+      body: file
+    });
+    if (!uploadRes.ok) throw new Error('Upload failed (status ' + uploadRes.status + ').');
+    return fileId;
+  }
+
+  // Pulls a previously-uploaded attachment's bytes back from Drive on
+  // demand. Nothing from this is cached — the blob only lives in memory
+  // for the moment it's opened/downloaded.
+  async function downloadFileFromDrive(driveFileId, mimeType) {
+    const res = await driveApiFetch(`https://www.googleapis.com/drive/v3/files/${driveFileId}?alt=media`);
+    if (!res.ok) throw new Error('Download failed (status ' + res.status + ').');
+    return res.blob();
   }
 
   async function pushToDrive() {
@@ -1898,22 +2246,38 @@
 
   async function pullFromDrive() {
     const fileId = await findDriveFileId();
-    if (!fileId) return { found: false, added: 0 };
+    if (!fileId) return { found: false, added: 0, updated: 0 };
     const res = await driveApiFetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`);
     if (!res.ok) throw new Error('Download failed (status ' + res.status + ').');
     const text = await res.text();
     const imported = importFromJson(text);
 
-    const existingIds = new Set(sessions.map(s => s.id));
+    const localById = new Map(sessions.map(s => [s.id, s]));
     let added = 0;
-    imported.forEach(s => {
-      if (!existingIds.has(s.id)) {
-        sessions.push(s);
-        existingIds.add(s.id);
+    let updated = 0;
+
+    imported.forEach(remote => {
+      const local = localById.get(remote.id);
+      if (!local) {
+        // Genuinely new session — take it as-is.
+        sessions.push(remote);
+        localById.set(remote.id, remote);
         added++;
+        return;
+      }
+      // Session exists on both sides — last-write-wins by updatedAt.
+      // If either side is missing a timestamp (older data from before this
+      // fix), don't clobber local edits with an equally-unclear remote copy.
+      const remoteTime = remote.updatedAt || 0;
+      const localTime = local.updatedAt || 0;
+      if (remoteTime > localTime) {
+        const idx = sessions.findIndex(s => s.id === remote.id);
+        sessions[idx] = remote;
+        updated++;
       }
     });
-    return { found: true, added };
+
+    return { found: true, added, updated };
   }
 
   drivePushBtn.addEventListener('click', async () => {
@@ -1938,7 +2302,7 @@
       render();
       await saveSessions({ skipAutoPush: true });
       await recordSyncNow();
-      showDriveMsg(`Pulled from Drive: ${result.added} new session${result.added === 1 ? '' : 's'} added.`, 'ok');
+      showDriveMsg(`Pulled from Drive: ${result.added} new, ${result.updated} updated.`, 'ok');
     } catch (err) {
       showDriveMsg('Pull failed: ' + err.message, 'err');
     }
@@ -1954,23 +2318,23 @@
       .catch(err => showDriveMsg('Auto-sync push failed: ' + err.message, 'err'));
   }
 
-  // On page load: try a silent (no popup) sign-in and pull automatically —
-  // no toggle or extra click required, the same auto-sign-in behavior as
-  // the Task Tracking app. If Google can't do it silently (e.g. first time
-  // in this browser, or the grant expired), this quietly gives up and
-  // leaves it to a manual "Sign in with Google" click, no error shown.
+  // On page load: if a Client ID is saved on this device, try a silent
+  // (no popup) sign-in and pull automatically — no toggle or extra click
+  // required. If Google can't do it silently (e.g. first time in this
+  // browser, or the grant expired), this quietly gives up and leaves it to
+  // a manual "Sign in with Google" click, no error shown.
   async function tryAutoSyncOnLoad() {
     try {
       await initGisIfNeeded();
       await requestDriveToken({ silent: true });
       onSignedIn();
       const result = await pullFromDrive();
-      if (result.added) {
+      if (result.added || result.updated) {
         render();
         await saveSessions({ skipAutoPush: true });
       }
       await recordSyncNow();
-      showDriveMsg(`Auto-synced on load: ${result.added} new session${result.added === 1 ? '' : 's'} pulled.`, 'ok');
+      showDriveMsg(`Auto-synced on load: ${result.added} new, ${result.updated} updated.`, 'ok');
     } catch (err) {
       // Silent sign-in unavailable (e.g. first time in this browser) —
       // leave it to a manual "Sign in with Google" click, no error shown.
