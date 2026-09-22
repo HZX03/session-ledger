@@ -192,12 +192,58 @@
     color: var(--muted);
   }
 
+  /* Filter bar */
+  .filter-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+
+  .filter-bar select,
+  .filter-bar input[type="date"] {
+    width: auto;
+    font-size: 12.5px;
+    padding: 6px 8px;
+    color-scheme: dark;
+  }
+
+  .filter-bar select { max-width: 170px; }
+
+  .filter-date {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .filter-bar .active-filter {
+    border-color: var(--gold-dim);
+  }
+
+  .filter-clear {
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 12px;
+    color: var(--gold);
+    background: transparent;
+    border: 0;
+    padding: 6px 4px;
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+
+  .filter-clear:hover { color: var(--cream); }
+
   /* HU / non-HU format switcher */
   .format-tabs {
     display: inline-flex;
     gap: 2px;
     padding: 3px;
-    margin-bottom: 16px;
     border: 1px solid var(--line);
     border-radius: 8px;
     background: rgba(0,0,0,0.18);
@@ -973,10 +1019,17 @@
   </div>
 
   <div class="headline">
-    <div class="format-tabs" id="formatTabs" role="tablist" aria-label="Filter results by format">
-      <button type="button" class="format-tab active" data-format="all" role="tab" aria-selected="true">All<span class="format-tab-count" id="formatCountAll">0</span></button>
-      <button type="button" class="format-tab" data-format="nonhu" role="tab" aria-selected="false">Non-HU<span class="format-tab-count" id="formatCountNonHu">0</span></button>
-      <button type="button" class="format-tab" data-format="hu" role="tab" aria-selected="false">HU<span class="format-tab-count" id="formatCountHu">0</span></button>
+    <div class="filter-bar">
+      <div class="format-tabs" id="formatTabs" role="tablist" aria-label="Filter by format">
+        <button type="button" class="format-tab active" data-format="all" role="tab" aria-selected="true">All<span class="format-tab-count" id="formatCountAll">0</span></button>
+        <button type="button" class="format-tab" data-format="nonhu" role="tab" aria-selected="false">Non-HU<span class="format-tab-count" id="formatCountNonHu">0</span></button>
+        <button type="button" class="format-tab" data-format="hu" role="tab" aria-selected="false">HU<span class="format-tab-count" id="formatCountHu">0</span></button>
+      </div>
+      <select id="filterStake" aria-label="Filter by stake"></select>
+      <select id="filterCurrency" aria-label="Filter by currency"></select>
+      <label class="filter-date">From <input type="date" id="filterFrom"></label>
+      <label class="filter-date">To <input type="date" id="filterTo"></label>
+      <button type="button" class="filter-clear" id="filterClear" hidden>Clear filters</button>
     </div>
     <div class="headline-top">
       <div>
@@ -1282,66 +1335,184 @@
     if (editingSessionId === null) sessionCurrencyCodeInput.value = defaultCurrencyCode;
   });
 
+  // A session's currency identity: its currency code (e.g. SGD) when it has
+  // one, otherwise its symbol. Grouping by code means a session saved as
+  // "$ (SGD)" still counts together with "S$ (SGD)" instead of splitting totals.
+  function currencyKeyOf(s) {
+    const code = (s.currencyCode || '').trim().toUpperCase();
+    return code || (s.currency || defaultCurrency);
+  }
+
   function groupSessionsByCurrency(list) {
     const groups = {};
     list.forEach(s => {
-      const cur = s.currency || defaultCurrency;
-      if (!groups[cur]) groups[cur] = { net: 0, best: -Infinity, worst: Infinity, count: 0 };
-      groups[cur].net += s.result;
-      groups[cur].best = Math.max(groups[cur].best, s.result);
-      groups[cur].worst = Math.min(groups[cur].worst, s.result);
-      groups[cur].count++;
+      const key = currencyKeyOf(s);
+      if (!groups[key]) groups[key] = { net: 0, best: -Infinity, worst: Infinity, count: 0, symbols: {} };
+      const g = groups[key];
+      g.net += s.result;
+      g.best = Math.max(g.best, s.result);
+      g.worst = Math.min(g.worst, s.result);
+      g.count++;
+      const sym = s.currency || defaultCurrency;
+      g.symbols[sym] = (g.symbols[sym] || 0) + 1;
+    });
+    // Display each group with the symbol most of its sessions use.
+    Object.values(groups).forEach(g => {
+      g.symbol = Object.keys(g.symbols).sort((a, b) => g.symbols[b] - g.symbols[a])[0];
     });
     return groups;
   }
 
-  // ---------- HU / non-HU format filter (headline only) ----------
-  const FORMAT_FILTER_KEY = 'poker-format-filter';
-  const FORMAT_LABELS = { all: 'Net result', nonhu: 'Net result · Non-HU', hu: 'Net result · HU' };
-  let formatFilter = 'all';
+  // ---------- Filters: format (HU / non-HU), stake, currency, date range ----------
+  // Filters apply to both the headline stats and the ledger list.
+  const FILTERS_KEY = 'poker-filters';
+  const LEGACY_FORMAT_FILTER_KEY = 'poker-format-filter';
+  const DEFAULT_FILTERS = { format: 'all', stake: '', currency: '', from: '', to: '' };
+  let filters = { ...DEFAULT_FILTERS };
 
-  function sessionsForFormat(list, format) {
-    if (format === 'hu') return list.filter(s => s.isHU === true);
-    if (format === 'nonhu') return list.filter(s => s.isHU !== true);
-    return list;
+  const filterStakeEl = document.getElementById('filterStake');
+  const filterCurrencyEl = document.getElementById('filterCurrency');
+  const filterFromEl = document.getElementById('filterFrom');
+  const filterToEl = document.getElementById('filterTo');
+  const filterClearBtn = document.getElementById('filterClear');
+
+  // Normalise stakes so "0.25/0.5", "$0.25/$0.50" and "-0.25/0.50" are all
+  // treated as the same game: "0.25/0.50". Anything without numbers is kept
+  // as typed; blank stakes group under "No stake".
+  const NO_STAKE = '__none__';
+  function stakeKeyOf(s) {
+    const raw = (s.stake || '').trim();
+    if (!raw) return NO_STAKE;
+    const nums = raw.match(/\d+(?:\.\d+)?/g);
+    if (!nums) return raw.toLowerCase();
+    return nums.map(n => {
+      const v = parseFloat(n);
+      return Number.isInteger(v) && v >= 1 ? String(v) : v.toFixed(2);
+    }).join('/');
+  }
+  function stakeLabel(key) { return key === NO_STAKE ? 'No stake' : key; }
+
+  function matchesFilters(s, f = filters, skip = '') {
+    if (skip !== 'format') {
+      if (f.format === 'hu' && s.isHU !== true) return false;
+      if (f.format === 'nonhu' && s.isHU === true) return false;
+    }
+    if (f.stake && stakeKeyOf(s) !== f.stake) return false;
+    if (f.currency && currencyKeyOf(s) !== f.currency) return false;
+    if (f.from && (s.date || '') < f.from) return false;
+    if (f.to && (s.date || '') > f.to) return false;
+    return true;
   }
 
-  function renderFormatTabs() {
+  function filtersActive() {
+    return filters.format !== 'all' || !!filters.stake || !!filters.currency || !!filters.from || !!filters.to;
+  }
+
+  function fillSelect(el, allLabel, entries, current) {
+    // entries: [[value, label, count], ...]
+    el.innerHTML = `<option value="">${allLabel}</option>` + entries.map(([v, label, n]) =>
+      `<option value="${escapeHtml(v)}"${v === current ? ' selected' : ''}>${escapeHtml(label)} (${n})</option>`
+    ).join('');
+    el.value = current;
+    el.classList.toggle('active-filter', !!current);
+  }
+
+  function renderFilterBar() {
+    // Option lists come from every session so choices never vanish; counts
+    // show how many sessions each option has overall.
+    const stakeCounts = {}, curCounts = {};
+    sessions.forEach(s => {
+      const sk = stakeKeyOf(s); stakeCounts[sk] = (stakeCounts[sk] || 0) + 1;
+      const ck = currencyKeyOf(s); curCounts[ck] = (curCounts[ck] || 0) + 1;
+    });
+    // Drop a saved filter whose value no longer exists in the data.
+    if (filters.stake && !stakeCounts[filters.stake]) filters.stake = '';
+    if (filters.currency && !curCounts[filters.currency]) filters.currency = '';
+
+    const stakeEntries = Object.keys(stakeCounts)
+      .sort((a, b) => (a === NO_STAKE) - (b === NO_STAKE) || (parseBigBlind(a) || 0) - (parseBigBlind(b) || 0) || a.localeCompare(b))
+      .map(k => [k, stakeLabel(k), stakeCounts[k]]);
+    fillSelect(filterStakeEl, 'All stakes', stakeEntries, filters.stake);
+
+    const curEntries = Object.keys(curCounts).sort().map(k => [k, k, curCounts[k]]);
+    fillSelect(filterCurrencyEl, 'All currencies', curEntries, filters.currency);
+
+    filterFromEl.value = filters.from;
+    filterToEl.value = filters.to;
+    filterFromEl.classList.toggle('active-filter', !!filters.from);
+    filterToEl.classList.toggle('active-filter', !!filters.to);
+
+    // Format tabs: counts respect the other filters, so they always add up
+    // to what you'd see when you click them.
+    const base = sessions.filter(s => matchesFilters(s, filters, 'format'));
+    const huCount = base.filter(s => s.isHU === true).length;
+    document.getElementById('formatCountAll').textContent = base.length;
+    document.getElementById('formatCountHu').textContent = huCount;
+    document.getElementById('formatCountNonHu').textContent = base.length - huCount;
     document.querySelectorAll('#formatTabs .format-tab').forEach(btn => {
-      const active = btn.dataset.format === formatFilter;
+      const active = btn.dataset.format === filters.format;
       btn.classList.toggle('active', active);
       btn.setAttribute('aria-selected', active ? 'true' : 'false');
     });
-    const huCount = sessions.filter(s => s.isHU === true).length;
-    document.getElementById('formatCountAll').textContent = sessions.length;
-    document.getElementById('formatCountHu').textContent = huCount;
-    document.getElementById('formatCountNonHu').textContent = sessions.length - huCount;
-    document.getElementById('netLabel').textContent = FORMAT_LABELS[formatFilter];
+
+    filterClearBtn.hidden = !filtersActive();
+
+    const parts = [];
+    if (filters.format === 'hu') parts.push('HU');
+    if (filters.format === 'nonhu') parts.push('Non-HU');
+    if (filters.stake) parts.push(stakeLabel(filters.stake));
+    if (filters.currency) parts.push(filters.currency);
+    if (filters.from || filters.to) {
+      parts.push(`${filters.from ? fmtDate(filters.from) : '…'} – ${filters.to ? fmtDate(filters.to) : 'now'}`);
+    }
+    document.getElementById('netLabel').textContent = 'Net result' + (parts.length ? ' · ' + parts.join(' · ') : '');
   }
 
-  document.getElementById('formatTabs').addEventListener('click', async (e) => {
-    const btn = e.target.closest('.format-tab');
-    if (!btn || btn.dataset.format === formatFilter) return;
-    formatFilter = btn.dataset.format;
+  async function setFilters(patch) {
+    filters = { ...filters, ...patch };
     render();
-    await store.set(FORMAT_FILTER_KEY, formatFilter);
-  });
+    await store.set(FILTERS_KEY, JSON.stringify(filters));
+  }
 
-  async function loadFormatFilter() {
-    const stored = await store.get(FORMAT_FILTER_KEY);
-    if (stored === 'hu' || stored === 'nonhu' || stored === 'all') formatFilter = stored;
+  document.getElementById('formatTabs').addEventListener('click', (e) => {
+    const btn = e.target.closest('.format-tab');
+    if (!btn || btn.dataset.format === filters.format) return;
+    setFilters({ format: btn.dataset.format });
+  });
+  filterStakeEl.addEventListener('change', () => setFilters({ stake: filterStakeEl.value }));
+  filterCurrencyEl.addEventListener('change', () => setFilters({ currency: filterCurrencyEl.value }));
+  filterFromEl.addEventListener('change', () => setFilters({ from: filterFromEl.value }));
+  filterToEl.addEventListener('change', () => setFilters({ to: filterToEl.value }));
+  filterClearBtn.addEventListener('click', () => setFilters({ ...DEFAULT_FILTERS }));
+
+  async function loadFilters() {
+    try {
+      const stored = await store.get(FILTERS_KEY);
+      if (stored) {
+        filters = { ...DEFAULT_FILTERS, ...JSON.parse(stored) };
+      } else {
+        // Carry over the HU tab choice from the previous version.
+        const legacy = await store.get(LEGACY_FORMAT_FILTER_KEY);
+        if (legacy === 'hu' || legacy === 'nonhu') filters.format = legacy;
+      }
+    } catch (err) {
+      filters = { ...DEFAULT_FILTERS };
+    }
+    if (!['all', 'hu', 'nonhu'].includes(filters.format)) filters.format = 'all';
   }
 
   function render() {
     const body = document.getElementById('ledgerBody');
     const count = sessions.length;
-    document.getElementById('ledgerCount').textContent = count === 1 ? '1 entry' : `${count} entries`;
 
-    // Headline stats cover only the selected format (All / Non-HU / HU).
-    // The ledger below always lists every session.
-    renderFormatTabs();
-    const view = sessionsForFormat(sessions, formatFilter);
+    // Headline stats and the ledger both show only sessions matching the
+    // current filters (format, stake, currency, date range).
+    renderFilterBar();
+    const view = sessions.filter(s => matchesFilters(s));
     const viewCount = view.length;
+    document.getElementById('ledgerCount').textContent = filtersActive()
+      ? `${viewCount} of ${count} entries (filtered)`
+      : (count === 1 ? '1 entry' : `${count} entries`);
 
     // Headline stats — grouped per currency, since summing across currencies
     // as raw numbers would be meaningless.
@@ -1356,7 +1527,7 @@
     } else {
       netContainer.innerHTML = currencyKeys.map(cur => {
         const net = groups[cur].net;
-        return `<span class="net-value-line ${net >= 0 ? 'pos' : 'neg'}">${fmtMoney(net, cur)}</span>`;
+        return `<span class="net-value-line ${net >= 0 ? 'pos' : 'neg'}">${fmtMoney(net, groups[cur].symbol)}</span>`;
       }).join('');
     }
 
@@ -1380,8 +1551,8 @@
         const g = groups[cur];
         const suffix = multiCurrency ? ` (${cur})` : '';
         return `
-          <div class="stat"><div class="num ${g.best >= 0 ? 'pos' : 'neg'}">${fmtMoney(g.best, cur)}</div><div class="lbl">Best session${suffix}</div></div>
-          <div class="stat"><div class="num ${g.worst >= 0 ? 'pos' : 'neg'}">${fmtMoney(g.worst, cur)}</div><div class="lbl">Worst session${suffix}</div></div>`;
+          <div class="stat"><div class="num ${g.best >= 0 ? 'pos' : 'neg'}">${fmtMoney(g.best, g.symbol)}</div><div class="lbl">Best session${suffix}</div></div>
+          <div class="stat"><div class="num ${g.worst >= 0 ? 'pos' : 'neg'}">${fmtMoney(g.worst, g.symbol)}</div><div class="lbl">Worst session${suffix}</div></div>`;
       }).join('');
     }
 
@@ -1390,8 +1561,7 @@
     if (count === 0) {
       trail.innerHTML = '<span class="trail-empty">Log a session to start the trail.</span>';
     } else if (viewCount === 0) {
-      const which = formatFilter === 'hu' ? 'HU' : 'non-HU';
-      trail.innerHTML = `<span class="trail-empty">No ${which} sessions yet. Tick "Heads-up (HU) session" when logging, or edit an existing session.</span>`;
+      trail.innerHTML = '<span class="trail-empty">No sessions match these filters.</span>';
     } else {
       const chrono = [...view].sort((a, b) => a.date.localeCompare(b.date) || a.id - b.id);
       const maxAbs = Math.max(...chrono.map(s => Math.abs(s.result)), 1);
@@ -1407,8 +1577,12 @@
       body.innerHTML = '<div class="empty-state">No sessions logged yet. Add your first one above.</div>';
       return;
     }
+    if (viewCount === 0) {
+      body.innerHTML = '<div class="empty-state">No sessions match these filters. Use "Clear filters" above to see everything.</div>';
+      return;
+    }
 
-    const sorted = [...sessions].sort((a, b) => b.date.localeCompare(a.date) || b.id - a.id);
+    const sorted = [...view].sort((a, b) => b.date.localeCompare(a.date) || b.id - a.id);
     body.innerHTML = sorted.map(s => `
       <div class="row" data-id="${s.id}">
         <div class="col-date">${fmtDate(s.date)}${renderTimeRange(s)}</div>
@@ -1919,8 +2093,14 @@
       errorEl.textContent = `Session saved, but ${notUploadedCount} file${notUploadedCount === 1 ? '' : 's'} weren't uploaded to Drive in time and were left off. Add ${notUploadedCount === 1 ? 'it' : 'them'} again if needed.`;
     }
 
+    const savedId = editingSessionId !== null ? editingSessionId : sessions[sessions.length - 1].id;
+    const saved = sessions.find(s => s.id === savedId);
+
     render();
     resetFormToCreateMode();
+    if (saved && !matchesFilters(saved)) {
+      showBackupMsg('Session saved, but it\'s hidden by the current filters. Clear filters to see it.', 'ok');
+    }
     await saveSessions();
   });
 
@@ -2494,7 +2674,7 @@
 
   (async function init() {
     await loadDefaultCurrency();
-    await loadFormatFilter();
+    await loadFilters();
     await loadSessions();
   })();
 </script>
